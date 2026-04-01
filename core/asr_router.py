@@ -122,9 +122,11 @@ class LocalWhisper:
 
 def _get_client(provider: ASRProvider, config: VoxLogConfig) -> ASRProviderClient:
     if provider == ASRProvider.QWEN:
-        # Home (US exit) uses international endpoint; Office (China) uses domestic
-        from core.models import Environment
-        international = config.env == Environment.HOME
+        # DashScope key region is determined by where the key was created, not
+        # where the request originates. Default to domestic (most users register
+        # on Chinese aliyun console). Set DASHSCOPE_INTL=1 if you have an intl key.
+        import os
+        international = os.getenv("DASHSCOPE_INTL", "0") == "1"
         return QwenASR(config.dashscope_api_key, international=international)
     elif provider == ASRProvider.OPENAI_WHISPER:
         return OpenAIWhisper(config.openai_api_key)

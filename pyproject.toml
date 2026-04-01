@@ -1,0 +1,49 @@
+[project]
+name = "voxlog"
+version = "0.1.0"
+description = "Your mouth doesn't have a save button. VoxLog gives it one."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "pydantic>=2.0",
+    "aiosqlite>=0.20.0",
+    "httpx>=0.27.0",
+    "openai>=1.50.0",
+    "dashscope>=1.20.0",
+    "structlog>=24.0.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+local = [
+    "faster-whisper>=1.0.0",
+    "ollama>=0.3.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-httpx>=0.30.0",
+    "ruff>=0.7.0",
+]
+
+[project.scripts]
+voxlog-server = "server.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "server"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

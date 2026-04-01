@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+*.db
+*.sqlite
+.DS_Store
+macos/build/
+macos/DerivedData/
+macos/*.xcuserdata/
+~/.voxlog/

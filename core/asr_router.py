@@ -28,23 +28,51 @@ class ASRProviderClient(Protocol):
 
 
 class QwenASR:
-    """Alibaba Qwen ASR via DashScope API (OpenAI-compatible)."""
+    """Alibaba Qwen ASR via DashScope MultiModalConversation API.
 
-    def __init__(self, api_key: str):
+    Uses qwen3-asr-flash model. Audio is sent as base64 data URI.
+    For China domestic: dashscope.aliyuncs.com
+    For international: dashscope-intl.aliyuncs.com
+    """
+
+    def __init__(self, api_key: str, international: bool = False):
         self.api_key = api_key
-        self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        host = "dashscope-intl.aliyuncs.com" if international else "dashscope.aliyuncs.com"
+        self.base_url = f"https://{host}/api/v1"
 
     async def transcribe(self, audio: bytes) -> str:
+        import base64
+        audio_b64 = base64.b64encode(audio).decode()
+        data_uri = f"data:audio/wav;base64,{audio_b64}"
+
         async with httpx.AsyncClient(timeout=30.0) as client:
-            # Use the audio/transcriptions endpoint (OpenAI-compatible)
             resp = await client.post(
-                f"{self.base_url}/audio/transcriptions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                files={"file": ("audio.wav", audio, "audio/wav")},
-                data={"model": "qwen-audio-turbo"},
+                f"{self.base_url}/services/aigc/multimodal-generation/generation",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "qwen3-asr-flash",
+                    "input": {
+                        "messages": [
+                            {"content": [{"audio": data_uri}], "role": "user"},
+                        ]
+                    },
+                    "parameters": {
+                        "asr_options": {"enable_itn": True}
+                    },
+                },
             )
             resp.raise_for_status()
-            return resp.json()["text"]
+            data = resp.json()
+            # Extract text from multimodal response
+            content = data.get("output", {}).get("choices", [{}])[0].get("message", {}).get("content", [])
+            if isinstance(content, list):
+                return "".join(c.get("text", "") for c in content if "text" in c).strip()
+            if isinstance(content, str):
+                return content.strip()
+            raise ASRError(f"Unexpected Qwen ASR response format: {data}")
 
 
 class OpenAIWhisper:
@@ -94,7 +122,10 @@ class LocalWhisper:
 
 def _get_client(provider: ASRProvider, config: VoxLogConfig) -> ASRProviderClient:
     if provider == ASRProvider.QWEN:
-        return QwenASR(config.dashscope_api_key)
+        # Home (US exit) uses international endpoint; Office (China) uses domestic
+        from core.models import Environment
+        international = config.env == Environment.HOME
+        return QwenASR(config.dashscope_api_key, international=international)
     elif provider == ASRProvider.OPENAI_WHISPER:
         return OpenAIWhisper(config.openai_api_key)
     elif provider == ASRProvider.LOCAL_WHISPER:

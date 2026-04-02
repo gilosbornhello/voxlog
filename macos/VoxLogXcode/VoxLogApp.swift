@@ -242,7 +242,7 @@ struct MainLayout: View {
 
 // MARK: - Agent Sidebar
 
-struct AgentInfo: Identifiable, Hashable, Equatable {
+struct AgentInfo: Identifiable, Hashable, Equatable, Codable {
     var id: String
     var name: String
     var icon: String
@@ -250,6 +250,31 @@ struct AgentInfo: Identifiable, Hashable, Equatable {
     var parent: String  // empty = top level
     var count: Int = 0
     var lastActive: String = ""
+}
+
+// MARK: - Agent Persistence
+
+struct AgentStore {
+    static let path = NSHomeDirectory() + "/.voxlog/agents.json"
+
+    static func load() -> [AgentInfo] {
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let agents = try? JSONDecoder().decode([AgentInfo].self, from: data),
+           !agents.isEmpty {
+            return agents
+        }
+        // First time — use defaults and save
+        save(DEFAULT_AGENTS)
+        return DEFAULT_AGENTS
+    }
+
+    static func save(_ agents: [AgentInfo]) {
+        let dir = NSHomeDirectory() + "/.voxlog"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(agents) {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
+    }
 }
 
 let DEFAULT_AGENTS: [AgentInfo] = [
@@ -362,6 +387,7 @@ struct SidebarView: View {
         let id = newAgentName.lowercased().replacingOccurrences(of: " ", with: "-")
         let emoji = newAgentEmoji.isEmpty ? "🤖" : String(newAgentEmoji.prefix(2))
         appState.agents.append(AgentInfo(id: id, name: newAgentName, icon: "person", emoji: emoji, parent: ""))
+        AgentStore.save(appState.agents)
         newAgentName = ""
         newAgentEmoji = "🤖"
         showAddAgent = false
@@ -385,6 +411,7 @@ struct AgentDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         dragging = nil
+        AgentStore.save(agents)
         return true
     }
 
@@ -968,7 +995,7 @@ class AppState: ObservableObject {
     @Published var serverRunning = false
     @Published var envLabel = ""
     @Published var modelLabel = ""
-    @Published var agents: [AgentInfo] = DEFAULT_AGENTS
+    @Published var agents: [AgentInfo] = AgentStore.load()
     @Published var selectedAgent: String = "claude-code"
     @Published var totalRecordings = 0
     @Published var currentASRLabel = "Qwen ASR (US)"

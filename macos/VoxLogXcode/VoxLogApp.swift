@@ -242,12 +242,12 @@ struct MainLayout: View {
 
 // MARK: - Agent Sidebar
 
-struct AgentInfo: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let icon: String
-    let emoji: String
-    let parent: String  // empty = top level
+struct AgentInfo: Identifiable, Hashable, Equatable {
+    var id: String
+    var name: String
+    var icon: String
+    var emoji: String
+    var parent: String  // empty = top level
     var count: Int = 0
     var lastActive: String = ""
 }
@@ -267,17 +267,48 @@ let DEFAULT_AGENTS: [AgentInfo] = [
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+    @State private var showAddAgent = false
+    @State private var newAgentName = ""
+    @State private var newAgentEmoji = "🤖"
+    @State private var draggingAgent: AgentInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Agents").font(.caption).fontWeight(.semibold).foregroundColor(.secondary)
-                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+            // Header with + button
+            HStack {
+                Text("Agents").font(.caption).fontWeight(.semibold).foregroundColor(.secondary)
+                Spacer()
+                Button(action: { showAddAgent.toggle() }) {
+                    Image(systemName: "plus").font(.caption).foregroundColor(.secondary)
+                }.buttonStyle(.plain).help("Add agent")
+            }
+            .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+
+            // Add agent inline form
+            if showAddAgent {
+                HStack(spacing: 4) {
+                    TextField("🤖", text: $newAgentEmoji)
+                        .textFieldStyle(.roundedBorder).frame(width: 36)
+                    TextField("Name", text: $newAgentName)
+                        .textFieldStyle(.roundedBorder).font(.caption)
+                    Button("Add") { addAgent() }
+                        .controlSize(.small).disabled(newAgentName.isEmpty)
+                }
+                .padding(.horizontal, 8).padding(.bottom, 6)
+            }
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 1) {
                     ForEach(topLevelAgents) { agent in
                         AgentRow(agent: agent, isSelected: agent.id == appState.selectedAgent)
                             .onTapGesture { appState.selectAgent(agent.id) }
+                            .onDrag {
+                                draggingAgent = agent
+                                return NSItemProvider(object: agent.id as NSString)
+                            }
+                            .onDrop(of: [.text], delegate: AgentDropDelegate(
+                                item: agent, agents: $appState.agents, dragging: $draggingAgent
+                            ))
 
                         // Sub-agents
                         ForEach(subAgents(for: agent.id)) { sub in
@@ -327,12 +358,47 @@ struct SidebarView: View {
         NSApp.sendAction(#selector(AppDelegate.openSettings), to: nil, from: nil)
     }
 
+    func addAgent() {
+        let id = newAgentName.lowercased().replacingOccurrences(of: " ", with: "-")
+        let emoji = newAgentEmoji.isEmpty ? "🤖" : String(newAgentEmoji.prefix(2))
+        appState.agents.append(AgentInfo(id: id, name: newAgentName, icon: "person", emoji: emoji, parent: ""))
+        newAgentName = ""
+        newAgentEmoji = "🤖"
+        showAddAgent = false
+    }
+
     var topLevelAgents: [AgentInfo] {
         appState.agents.filter { $0.parent.isEmpty }
     }
 
     func subAgents(for parentId: String) -> [AgentInfo] {
         appState.agents.filter { $0.parent == parentId }
+    }
+}
+
+// MARK: - Drag & Drop Reorder
+
+struct AgentDropDelegate: DropDelegate {
+    let item: AgentInfo
+    @Binding var agents: [AgentInfo]
+    @Binding var dragging: AgentInfo?
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = dragging, dragging.id != item.id,
+              // Only reorder top-level agents
+              dragging.parent.isEmpty && item.parent.isEmpty else { return }
+
+        guard let fromIdx = agents.firstIndex(where: { $0.id == dragging.id }),
+              let toIdx = agents.firstIndex(where: { $0.id == item.id }) else { return }
+
+        withAnimation(.easeInOut(duration: 0.15)) {
+            agents.move(fromOffsets: IndexSet(integer: fromIdx), toOffset: toIdx > fromIdx ? toIdx + 1 : toIdx)
+        }
     }
 }
 
@@ -380,6 +446,8 @@ struct AgentRow: View {
 struct ChatArea: View {
     @EnvironmentObject var appState: AppState
     var onFileTap: ((String) -> Void)?
+    @State private var showForwardPicker = false
+    @State private var forwardingMessage: VoxMessage?
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -394,6 +462,9 @@ struct ChatArea: View {
                         ForEach(appState.messages) { msg in
                             ChatBubble(message: msg, onFileTap: onFileTap, onRecall: {
                                 Task { await appState.recallMessage(msg.id) }
+                            }, onForward: {
+                                forwardingMessage = msg
+                                showForwardPicker = true
                             }).id(msg.id)
                         }
                         if appState.isRecording {
@@ -412,6 +483,56 @@ struct ChatArea: View {
                 if appState.isRecording { withAnimation { proxy.scrollTo("listening", anchor: .bottom) } }
             }
         }
+        .sheet(isPresented: $showForwardPicker) {
+            ForwardPicker(agents: appState.agents) { targetAgent in
+                if let msg = forwardingMessage {
+                    Task { await appState.forwardMessage(msg, to: targetAgent) }
+                }
+                showForwardPicker = false
+            }
+        }
+    }
+}
+
+// MARK: - Forward Picker
+
+struct ForwardPicker: View {
+    let agents: [AgentInfo]
+    let onPick: (String) -> Void
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Forward to").font(.headline)
+                Spacer()
+                Button("Cancel") { dismiss() }.controlSize(.small)
+            }.padding()
+
+            Divider()
+
+            List {
+                ForEach(agents, id: \.id) { agent in
+                    Button(action: { onPick(agent.id) }) {
+                        HStack(spacing: 8) {
+                            Text(agent.emoji)
+                                .font(.system(size: 20))
+                                .frame(width: 32, height: 32)
+                                .background(Color.primary.opacity(0.08))
+                                .cornerRadius(8)
+                            VStack(alignment: .leading) {
+                                Text(agent.name).font(.callout)
+                                if !agent.parent.isEmpty {
+                                    Text(agent.parent).font(.caption2).foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(width: 280, height: 350)
     }
 }
 
@@ -421,11 +542,13 @@ struct ChatBubble: View {
     let message: VoxMessage
     var onFileTap: ((String) -> Void)?
     var onRecall: (() -> Void)?
+    var onForward: (() -> Void)?
     @State private var isHovered = false
     @State private var copied = false
+    @State private var forwarded = false
 
     var canRecall: Bool {
-        Date().timeIntervalSince(message.createdAt) < 120 // 2 minutes
+        Date().timeIntervalSince(message.createdAt) < 120
     }
 
     var filePaths: [String] { extractFilePaths(from: message.text) }
@@ -487,16 +610,35 @@ struct ChatBubble: View {
                     .background(message.role == .me ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.08))
                     .cornerRadius(16)
 
+                    // Hover action buttons
                     if isHovered {
-                        Button(action: { copyText() }) {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .font(.caption2)
-                                .foregroundColor(copied ? .green : .secondary)
-                                .padding(4)
-                                .background(.ultraThinMaterial)
-                                .cornerRadius(4)
+                        HStack(spacing: 2) {
+                            // Forward (left)
+                            Button(action: { onForward?() }) {
+                                Image(systemName: forwarded ? "checkmark" : "arrowshape.turn.up.right")
+                                    .font(.caption2)
+                                    .foregroundColor(forwarded ? .green : .secondary)
+                            }.buttonStyle(.plain).help("Forward")
+
+                            // Copy (right)
+                            Button(action: { copyText() }) {
+                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    .font(.caption2)
+                                    .foregroundColor(copied ? .green : .secondary)
+                            }.buttonStyle(.plain).help("Copy")
+
+                            // Recall (if within 2 min)
+                            if canRecall {
+                                Button(action: { onRecall?() }) {
+                                    Image(systemName: "arrow.uturn.backward")
+                                        .font(.caption2)
+                                        .foregroundColor(.red.opacity(0.6))
+                                }.buttonStyle(.plain).help("Recall")
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .padding(3)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(6)
                         .padding(4)
                     }
                 }
@@ -510,15 +652,6 @@ struct ChatBubble: View {
                     if message.latencyMs > 0 { Text("· \(message.latencyMs)ms") }
                     if message.role == .me {
                         Image(systemName: "mic.fill").font(.system(size: 8))
-                    }
-
-                    // Recall button (within 2 minutes)
-                    if isHovered && canRecall {
-                        Button(action: { onRecall?() }) {
-                            Text("Recall")
-                                .font(.caption2)
-                                .foregroundColor(.red.opacity(0.7))
-                        }.buttonStyle(.plain)
                     }
                 }
                 .font(.caption2)
@@ -1042,6 +1175,21 @@ class AppState: ObservableObject {
 
         // Remove from local list
         messages.removeAll { $0.id == id }
+    }
+
+    // MARK: - Forward Message
+
+    func forwardMessage(_ msg: VoxMessage, to targetAgent: String) async {
+        // Save a copy of the message to the target agent
+        let text = "[Forwarded] " + msg.text
+        let url = URL(string: "http://127.0.0.1:7890/v1/save")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        req.httpBody = "text=\(encoded)&source=forward&target_app=forward&agent=\(targetAgent)".data(using: .utf8)
+        _ = try? await URLSession.shared.data(for: req)
     }
 
     // MARK: - ASR Model Switch

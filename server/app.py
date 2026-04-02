@@ -317,6 +317,23 @@ async def update_dictionary(request: Request, _auth: None = Depends(verify_token
     return data
 
 
+@app.get("/v1/summary")
+async def summary_endpoint(
+    date: str = Query(default="", description="Date YYYY-MM-DD, defaults to today"),
+    _auth: None = Depends(verify_token),
+) -> dict:
+    assert _archive and _config
+    from core.summarizer import summarize_day
+    if not date:
+        from datetime import datetime, timezone
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    records = await _archive.list_by_date(date)
+    record_dicts = [{"created_at": r.created_at.isoformat(), "polished_text": r.polished_text,
+                     "target_app": r.target_app} for r in records]
+    summary = await summarize_day(record_dicts, _config)
+    return {"date": date, "record_count": len(records), "summary": summary}
+
+
 def main():
     config = get_config()
     structlog.configure(

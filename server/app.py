@@ -10,6 +10,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 
@@ -338,6 +339,19 @@ async def detect_env_endpoint(_auth: None = Depends(verify_token)) -> dict:
         "llm_main": _config.route.llm.main.value,
         "llm_fallback": _config.route.llm.fallback.value,
     }}
+
+
+@app.post("/v1/sync-obsidian")
+async def sync_obsidian_endpoint(
+    days: int = Query(default=7),
+    _auth: None = Depends(verify_token),
+) -> dict:
+    from core.obsidian_sync import sync_recent
+    assert _config
+    exported = await asyncio.get_event_loop().run_in_executor(
+        None, sync_recent, _config.db_path, days
+    )
+    return {"exported": len(exported), "files": exported}
 
 
 @app.get("/v1/dictionary")

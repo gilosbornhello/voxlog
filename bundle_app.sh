@@ -84,13 +84,24 @@ kill $SERVER_PID 2>/dev/null
 LAUNCHER
 chmod +x "$MACOS_DIR/VoxLog"
 
-# Step 5: Create Info.plist
-echo "[5/5] Creating Info.plist..."
+# Step 5: Copy icon + Create Info.plist
+echo "[5/6] Copying app icon..."
+ICON_FILE="$VOXLOG_ROOT/macos/VoxLogXcode/AppIcon.icns"
+if [ -f "$ICON_FILE" ]; then
+    cp "$ICON_FILE" "$RESOURCES/AppIcon.icns"
+    echo "  Icon copied"
+else
+    echo "  WARNING: AppIcon.icns not found"
+fi
+
+echo "[6/6] Creating Info.plist..."
 cat > "$CONTENTS/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>VoxLog</string>
     <key>CFBundleIdentifier</key>

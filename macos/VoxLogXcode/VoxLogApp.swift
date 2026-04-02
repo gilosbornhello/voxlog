@@ -144,6 +144,12 @@ struct MainLayout: View {
                     previewPath = path
                     togglePreview(forceOpen: true)
                 }).environmentObject(appState)
+                .onAppear {
+                    appState.previewFile = { path in
+                        previewPath = path
+                        togglePreview(forceOpen: true)
+                    }
+                }
 
                 Divider()
 
@@ -471,11 +477,19 @@ struct ProcessingIndicator: View {
     }
 }
 
-// MARK: - Input Bar
+// MARK: - Input Bar (Claude for Mac style)
+
+struct AttachedFile: Identifiable {
+    let id = UUID()
+    let name: String
+    let path: String
+    let icon: String
+}
 
 struct InputBar: View {
     @EnvironmentObject var appState: AppState
     @State private var pasteText = ""
+    @State private var attachedFiles: [AttachedFile] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -484,18 +498,37 @@ struct InputBar: View {
                     .padding(.horizontal, 16).padding(.top, 4)
             }
 
+            // Attached files row
+            if !attachedFiles.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(attachedFiles) { file in
+                            HStack(spacing: 4) {
+                                Image(systemName: file.icon).font(.caption2)
+                                Text(file.name).font(.caption).lineLimit(1)
+                                Button(action: { attachedFiles.removeAll { $0.id == file.id } }) {
+                                    Image(systemName: "xmark").font(.system(size: 8))
+                                }.buttonStyle(.plain)
+                            }
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.accentColor.opacity(0.1))
+                            .cornerRadius(6)
+                            .onTapGesture { appState.previewFile?(file.path) }
+                        }
+                    }.padding(.horizontal, 12).padding(.top, 6)
+                }
+            }
+
             if appState.isRecording {
-                // Recording mode: cancel + listening + transcribe
                 HStack(spacing: 20) {
                     Button(action: { appState.cancelRecording() }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 28)).foregroundColor(.secondary)
                     }.buttonStyle(.plain).help("Cancel")
-
                     Spacer()
                     ListeningIndicator()
                     Spacer()
-
                     Button(action: { Task { await appState.stopAndProcess() } }) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 28)).foregroundColor(.green)
@@ -512,36 +545,89 @@ struct InputBar: View {
                 }.padding(.vertical, 10)
 
             } else {
-                // Normal mode: paste box + mic + save
-                HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 6) {
+                    // + Add file (left)
+                    Menu {
+                        Button(action: { pickFiles(types: ["public.image"]) }) {
+                            Label("Image", systemImage: "photo")
+                        }
+                        Button(action: { pickFiles(types: ["com.adobe.pdf"]) }) {
+                            Label("PDF", systemImage: "doc.richtext")
+                        }
+                        Button(action: { pickFiles(types: ["net.daringfireball.markdown", "public.plain-text"]) }) {
+                            Label("Markdown / Text", systemImage: "doc.text")
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 24)).foregroundColor(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 28)
+                    .help("Add file")
+
+                    // Text input (center)
                     TextField("Paste AI response...", text: $pasteText, axis: .vertical)
                         .textFieldStyle(.plain).font(.body).lineLimit(1...4)
                         .padding(8)
                         .background(Color.primary.opacity(0.04))
                         .cornerRadius(10)
 
-                    VStack(spacing: 8) {
-                        // Mic (voice → transcribe → directly to timeline as "me")
+                    // Model/agent selector (left of mic)
+                    Menu {
+                        ForEach(appState.agents.filter { $0.parent.isEmpty }, id: \.id) { agent in
+                            Button(agent.emoji + " " + agent.name) { appState.selectAgent(agent.id) }
+                        }
+                    } label: {
+                        Image(systemName: "cpu").font(.system(size: 18)).foregroundColor(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 24)
+                    .help("Switch agent")
+
+                    // Mic or Send (right)
+                    if pasteText.isEmpty && attachedFiles.isEmpty {
                         Button(action: { appState.startRecording() }) {
                             Image(systemName: "mic.circle.fill")
-                                .font(.system(size: 30)).foregroundColor(.accentColor)
-                        }.buttonStyle(.plain).help("Record & transcribe")
-
-                        // Save paste (→ timeline as "other")
-                        if !pasteText.isEmpty {
-                            Button(action: {
-                                Task { await appState.saveText(pasteText, role: .other) }
-                                pasteText = ""
-                            }) {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 30)).foregroundColor(.orange)
-                            }.buttonStyle(.plain).help("Save AI response")
-                        }
+                                .font(.system(size: 28)).foregroundColor(.accentColor)
+                        }.buttonStyle(.plain).help("Record voice")
+                    } else {
+                        Button(action: { sendAll() }) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 28)).foregroundColor(.orange)
+                        }.buttonStyle(.plain).help("Send")
                     }
                 }
-                .padding(.horizontal, 12).padding(.vertical, 8)
+                .padding(.horizontal, 10).padding(.vertical, 8)
             }
         }
+    }
+
+    func pickFiles(types: [String]) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = types.compactMap { .init($0) }
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                let ext = url.pathExtension.lowercased()
+                let icon = ["png","jpg","jpeg","gif","webp"].contains(ext) ? "photo" :
+                           ext == "pdf" ? "doc.richtext" :
+                           ["md","markdown"].contains(ext) ? "doc.text" : "doc"
+                attachedFiles.append(AttachedFile(name: url.lastPathComponent, path: url.path, icon: icon))
+            }
+        }
+    }
+
+    func sendAll() {
+        var text = pasteText
+        for file in attachedFiles {
+            if !text.isEmpty { text += "\n" }
+            text += file.path
+        }
+        if !text.isEmpty {
+            Task { await appState.saveText(text, role: .other) }
+        }
+        pasteText = ""
+        attachedFiles = []
     }
 }
 
@@ -559,6 +645,7 @@ class AppState: ObservableObject {
     @Published var agents: [AgentInfo] = DEFAULT_AGENTS
     @Published var selectedAgent: String = "claude-code"
     @Published var totalRecordings = 0
+    var previewFile: ((String) -> Void)?
 
     var selectedDateLabel: String {
         agents.first(where: { $0.id == selectedAgent })?.name ?? "VoxLog"

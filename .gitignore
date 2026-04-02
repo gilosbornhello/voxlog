@@ -12,3 +12,4 @@ macos/build/
 macos/DerivedData/
 macos/*.xcuserdata/
 ~/.voxlog/
+build/

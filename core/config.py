@@ -51,7 +51,7 @@ ROUTE_TABLE: dict[Environment, EnvConfig] = {
         llm=LLMConfig(main=LLMProvider.OPENAI_GPT, fallback=LLMProvider.QWEN_TURBO),
     ),
     Environment.OFFICE: EnvConfig(
-        asr=ASRConfig(main=ASRProvider.QWEN, fallback=ASRProvider.SILICONFLOW),
+        asr=ASRConfig(main=ASRProvider.SILICONFLOW, fallback=ASRProvider.QWEN),
         llm=LLMConfig(main=LLMProvider.QWEN_TURBO, fallback=LLMProvider.OLLAMA),
     ),
 }

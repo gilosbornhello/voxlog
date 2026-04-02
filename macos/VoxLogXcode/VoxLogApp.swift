@@ -304,6 +304,8 @@ struct MessageRow: View {
 
 struct InputBar: View {
     @EnvironmentObject var appState: AppState
+    @State private var textInput = ""
+    @FocusState private var isTextFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -315,28 +317,58 @@ struct InputBar: View {
                     .padding(.top, 4)
             }
 
-            HStack(spacing: 16) {
-                Spacer()
-
-                Button(action: {
-                    if appState.isRecording {
-                        Task { await appState.stopAndProcess() }
-                    } else {
-                        appState.startRecording()
+            HStack(alignment: .bottom, spacing: 8) {
+                // Text input (for pasting AI responses)
+                TextField("Paste text to save...", text: $textInput, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .lineLimit(1...5)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.05))
+                    .cornerRadius(8)
+                    .focused($isTextFocused)
+                    .onSubmit {
+                        if !textInput.isEmpty { saveText() }
                     }
-                }) {
-                    Image(systemName: appState.isRecording ? "arrow.up.circle.fill" : "mic.circle.fill")
-                        .font(.system(size: 36))
-                        .foregroundColor(appState.isRecording ? .green : .accentColor)
-                        .symbolEffect(.pulse, isActive: appState.isRecording)
-                }
-                .buttonStyle(.plain)
-                .disabled(appState.isProcessing)
-                .help(appState.isRecording ? "Stop and transcribe" : "Start recording")
 
-                Spacer()
+                VStack(spacing: 6) {
+                    // Mic button (voice recording)
+                    Button(action: {
+                        if appState.isRecording {
+                            Task { await appState.stopAndProcess() }
+                        } else {
+                            appState.startRecording()
+                        }
+                    }) {
+                        Image(systemName: appState.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(appState.isRecording ? .red : .accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appState.isProcessing)
+                    .help(appState.isRecording ? "Stop recording" : "Record voice")
+
+                    // Save button (paste text to archive)
+                    Button(action: { saveText() }) {
+                        Image(systemName: "square.and.arrow.down.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(textInput.isEmpty ? .secondary.opacity(0.3) : .orange)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(textInput.isEmpty || appState.isProcessing)
+                    .help("Save pasted text")
+                }
             }
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func saveText() {
+        guard !textInput.isEmpty else { return }
+        Task {
+            await appState.saveText(textInput)
+            textInput = ""
         }
     }
 }
@@ -555,6 +587,30 @@ class AppState: ObservableObject {
             }
         } catch { lastError = "\(error.localizedDescription)" }
 
+        isProcessing = false
+    }
+
+    func saveText(_ text: String) async {
+        // Save pasted text directly to archive (no ASR, no LLM)
+        isProcessing = true
+        do {
+            let url = URL(string: "http://127.0.0.1:7890/v1/save")!
+            var req = URLRequest(url: url); req.httpMethod = "POST"
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+            let app = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+            let body = "text=\(text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&source=paste&target_app=\(app)"
+            req.httpBody = body.data(using: .utf8)
+
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            let saved = json["polished_text"] as? String ?? text
+
+            let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+            messages.append(VoxMessage(text: saved, time: fmt.string(from: Date()), latencyMs: 0, targetApp: "📋 paste"))
+            totalRecordings += 1; lastError = nil
+        } catch { lastError = "\(error.localizedDescription)" }
         isProcessing = false
     }
 

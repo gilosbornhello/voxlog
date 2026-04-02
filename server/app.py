@@ -226,6 +226,38 @@ async def polish_endpoint(
             _config.switch_env(original_env)
 
 
+@app.post("/v1/save")
+async def save_text_endpoint(
+    text: str = Form(...),
+    source: str = Form("paste"),
+    target_app: str = Form(""),
+    _auth: None = Depends(verify_token),
+) -> VoiceResult:
+    """Save pasted text directly to archive. No ASR, no LLM. For recording AI responses."""
+    assert _config and _archive
+    from core.models import ASRProvider, LLMProvider
+
+    result = VoiceResult(
+        raw_text=text,
+        polished_text=text,
+        asr_provider=ASRProvider.QWEN,  # placeholder
+        llm_provider=None,
+        polished=False,
+        duration_seconds=0.0,
+        latency_ms=0,
+        target_app=target_app or source,
+        env=_config.env,
+    )
+
+    try:
+        await _archive.save(result)
+        logger.info("save.text", id=result.id, text_len=len(text), source=source)
+    except Exception as e:
+        logger.error("save.failed", error=str(e))
+
+    return result
+
+
 @app.get("/v1/history")
 async def history_endpoint(
     q: str = Query(default="", description="Search query"),

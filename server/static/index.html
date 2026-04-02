@@ -211,7 +211,8 @@ async function startRecording() {
     document.getElementById('recordStatus').textContent = 'Recording... release to stop';
     document.getElementById('recordResult').classList.remove('visible');
   } catch(e) {
-    document.getElementById('recordStatus').textContent = 'Microphone access denied';
+    document.getElementById('recordStatus').textContent = 'Mic error: ' + e.name + ' - ' + e.message;
+    console.error('Microphone error:', e);
   }
 }
 

@@ -102,17 +102,28 @@ async def voice_endpoint(
     assert _config and _archive and _dictionary
     start = time.monotonic()
 
-    # Read and validate audio
+    # Read audio
     audio_bytes = await audio.read()
     environment = Environment(env)
 
-    valid, err = validate_wav(audio_bytes, max_seconds=_config.max_audio_seconds)
-    if not valid:
-        if "too long" in err:
-            raise HTTPException(status_code=413, detail=err)
-        raise HTTPException(status_code=422, detail=err)
+    if len(audio_bytes) < 100:
+        raise HTTPException(status_code=422, detail="Audio too short or empty")
 
-    duration_seconds = get_duration_seconds(audio_bytes)
+    # Detect format and validate
+    from core.audio import detect_format
+    fmt = detect_format(audio_bytes)
+
+    if fmt == "wav":
+        valid, err = validate_wav(audio_bytes, max_seconds=_config.max_audio_seconds)
+        if not valid:
+            if "too long" in err:
+                raise HTTPException(status_code=413, detail=err)
+            raise HTTPException(status_code=422, detail=err)
+        duration_seconds = get_duration_seconds(audio_bytes)
+    else:
+        # Non-WAV (WebM from browser, OGG from bot, etc.) — let ASR handle it
+        duration_seconds = len(audio_bytes) / 32000  # rough estimate
+        logger.info("audio.non_wav", format=fmt, size=len(audio_bytes))
 
     # Temporarily switch env if different from config
     original_env = _config.env

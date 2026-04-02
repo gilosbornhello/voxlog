@@ -49,8 +49,11 @@ class QwenASR:
 
     async def transcribe(self, audio: bytes) -> str:
         import base64
+        from core.audio import detect_format
         audio_b64 = base64.b64encode(audio).decode()
-        data_uri = f"data:audio/wav;base64,{audio_b64}"
+        fmt = detect_format(audio)
+        mime = {"wav": "audio/wav", "ogg": "audio/ogg", "amr": "audio/amr"}.get(fmt, "audio/wav")
+        data_uri = f"data:{mime};base64,{audio_b64}"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -89,11 +92,15 @@ class OpenAIWhisper:
         self.api_key = api_key
 
     async def transcribe(self, audio: bytes) -> str:
+        from core.audio import detect_format
+        fmt = detect_format(audio)
+        ext = {"wav": "wav", "ogg": "ogg", "amr": "amr"}.get(fmt, "webm")
+        mime = {"wav": "audio/wav", "ogg": "audio/ogg", "amr": "audio/amr"}.get(fmt, "audio/webm")
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                files={"file": ("audio.wav", audio, "audio/wav")},
+                files={"file": (f"audio.{ext}", audio, mime)},
                 data={"model": "whisper-1"},
             )
             resp.raise_for_status()

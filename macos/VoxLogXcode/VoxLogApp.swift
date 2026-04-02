@@ -131,22 +131,23 @@ struct AgentInfo: Identifiable, Hashable {
     let id: String
     let name: String
     let icon: String
+    let emoji: String
     let parent: String  // empty = top level
     var count: Int = 0
     var lastActive: String = ""
 }
 
 let DEFAULT_AGENTS: [AgentInfo] = [
-    AgentInfo(id: "claude-code", name: "Claude Code", icon: "terminal", parent: ""),
-    AgentInfo(id: "claude-code/office-hours", name: "Office Hours", icon: "person.2", parent: "claude-code"),
-    AgentInfo(id: "claude-code/ceo-review", name: "CEO Review", icon: "star", parent: "claude-code"),
-    AgentInfo(id: "claude-code/eng-review", name: "Eng Review", icon: "wrench", parent: "claude-code"),
-    AgentInfo(id: "claude-code/design-review", name: "Design Review", icon: "paintbrush", parent: "claude-code"),
-    AgentInfo(id: "claude-mac", name: "Claude for Mac", icon: "desktopcomputer", parent: ""),
-    AgentInfo(id: "claude-mac/chat", name: "Chat", icon: "bubble.left", parent: "claude-mac"),
-    AgentInfo(id: "claude-mac/cowork", name: "Co-work", icon: "person.2.fill", parent: "claude-mac"),
-    AgentInfo(id: "openclaw", name: "OpenClaw", icon: "cpu", parent: ""),
-    AgentInfo(id: "general", name: "General", icon: "doc.text", parent: ""),
+    AgentInfo(id: "claude-code", name: "Claude Code", icon: "terminal", emoji: "👨‍💻", parent: ""),
+    AgentInfo(id: "claude-code/office-hours", name: "Office Hours", icon: "person.2", emoji: "🧑‍💼", parent: "claude-code"),
+    AgentInfo(id: "claude-code/ceo-review", name: "CEO Review", icon: "star", emoji: "👔", parent: "claude-code"),
+    AgentInfo(id: "claude-code/eng-review", name: "Eng Review", icon: "wrench", emoji: "🔧", parent: "claude-code"),
+    AgentInfo(id: "claude-code/design-review", name: "Design Review", icon: "paintbrush", emoji: "🎨", parent: "claude-code"),
+    AgentInfo(id: "claude-mac", name: "Claude for Mac", icon: "desktopcomputer", emoji: "🖥️", parent: ""),
+    AgentInfo(id: "claude-mac/chat", name: "Chat", icon: "bubble.left", emoji: "💬", parent: "claude-mac"),
+    AgentInfo(id: "claude-mac/cowork", name: "Co-work", icon: "person.2.fill", emoji: "🤝", parent: "claude-mac"),
+    AgentInfo(id: "openclaw", name: "OpenClaw", icon: "cpu", emoji: "🦞", parent: ""),
+    AgentInfo(id: "general", name: "General", icon: "doc.text", emoji: "📝", parent: ""),
 ]
 
 struct SidebarView: View {
@@ -200,29 +201,36 @@ struct AgentRow: View {
     var indent: Bool = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: agent.icon)
-                .font(.system(size: 11))
-                .foregroundColor(isSelected ? .accentColor : .secondary)
-                .frame(width: 16)
-            Text(agent.name)
-                .font(.callout)
-                .lineLimit(1)
+        HStack(spacing: 8) {
+            // Avatar (WeChat style rounded square)
+            Text(agent.emoji)
+                .font(.system(size: indent ? 16 : 20))
+                .frame(width: indent ? 26 : 32, height: indent ? 26 : 32)
+                .background(isSelected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.08))
+                .cornerRadius(indent ? 6 : 8)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(agent.name)
+                    .font(indent ? .caption : .callout)
+                    .lineLimit(1)
+                if agent.count > 0 && !indent {
+                    Text("\(agent.count) messages")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
             Spacer()
-            if agent.count > 0 {
+            if agent.count > 0 && indent {
                 Text("\(agent.count)")
                     .font(.caption2)
                     .foregroundColor(.secondary)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Color.primary.opacity(0.06))
-                    .cornerRadius(8)
             }
         }
-        .padding(.leading, indent ? 20 : 8)
-        .padding(.trailing, 8)
-        .padding(.vertical, 5)
+        .padding(.leading, indent ? 16 : 6)
+        .padding(.trailing, 6)
+        .padding(.vertical, 4)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
-        .cornerRadius(6)
+        .cornerRadius(8)
     }
 }
 

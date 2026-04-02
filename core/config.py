@@ -77,7 +77,7 @@ class VoxLogConfig:
     log_dir: Path = field(default_factory=lambda: VOXLOG_DIR / "logs")
     host: str = "127.0.0.1"
     port: int = 7890
-    max_audio_seconds: int = 60
+    max_audio_seconds: int = 600  # 10 minutes max
 
     @property
     def route(self) -> EnvConfig:

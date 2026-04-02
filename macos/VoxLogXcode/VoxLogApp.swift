@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AVFoundation
+import UniformTypeIdentifiers
 
 @main
 enum VoxLogEntry {
@@ -103,6 +104,7 @@ struct MainLayout: View {
     @State private var showSidebar = true
     @State private var showPreview = false
     @State private var previewPath = ""
+    @State private var showSearchSheet = false
 
     private let previewWidth: CGFloat = 320
 
@@ -124,13 +126,34 @@ struct MainLayout: View {
 
                     Text(appState.selectedDateLabel).font(.headline)
                     Spacer()
-                    if !appState.modelLabel.isEmpty {
-                        Text(appState.modelLabel)
-                            .font(.caption2)
-                            .foregroundColor(.secondary.opacity(0.6))
+
+                    // Three-dot menu
+                    Menu {
+                        Button(action: { showSearchSheet = true }) {
+                            Label("Search...", systemImage: "magnifyingglass")
+                        }
+                        Divider()
+                        Menu("Status") {
+                            Text("Server: \(appState.serverRunning ? "Running" : "Off")")
+                            Text("Env: \(appState.envLabel)")
+                            Text("ASR: \(appState.currentASRLabel)")
+                            Text("Model: \(appState.modelLabel)")
+                        }
+                        Divider()
+                        Button(action: { NSApp.sendAction(#selector(AppDelegate.openDictionary), to: nil, from: nil) }) {
+                            Label("Dictionary", systemImage: "character.book.closed")
+                        }
+                        Button(action: { NSApp.sendAction(#selector(AppDelegate.openSettings), to: nil, from: nil) }) {
+                            Label("Settings", systemImage: "gear")
+                        }
+                        Button(action: { appState.syncToObsidian() }) {
+                            Label("Sync Obsidian", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle").font(.system(size: 16)).foregroundColor(.secondary)
                     }
-                    Circle().fill(appState.serverRunning ? .green : .red).frame(width: 6, height: 6)
-                    Text(appState.envLabel).font(.caption).foregroundColor(.secondary)
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 24)
 
                     Button(action: { togglePreview() }) {
                         Image(systemName: "sidebar.right").foregroundColor(showPreview ? .accentColor : .secondary)
@@ -547,27 +570,12 @@ struct InputBar: View {
             } else {
                 HStack(alignment: .bottom, spacing: 6) {
                     // + Add file (left)
-                    Menu {
-                        Button(action: { pasteFilePath() }) {
-                            Label("Paste file path", systemImage: "link")
-                        }
-                        Divider()
-                        Button(action: { pickFiles(types: ["public.image"]) }) {
-                            Label("Image", systemImage: "photo")
-                        }
-                        Button(action: { pickFiles(types: ["com.adobe.pdf"]) }) {
-                            Label("PDF", systemImage: "doc.richtext")
-                        }
-                        Button(action: { pickFiles(types: ["net.daringfireball.markdown", "public.plain-text"]) }) {
-                            Label("Markdown / Text", systemImage: "doc.text")
-                        }
-                    } label: {
+                    Button(action: { pickAnyFile() }) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 24)).foregroundColor(.secondary)
                     }
-                    .menuStyle(.borderlessButton)
-                    .frame(width: 28)
-                    .help("Add file")
+                    .buttonStyle(.plain)
+                    .help("Add files or photos")
 
                     // Text input (center)
                     TextField("Paste AI response...", text: $pasteText, axis: .vertical)
@@ -575,6 +583,11 @@ struct InputBar: View {
                         .padding(8)
                         .background(Color.primary.opacity(0.04))
                         .cornerRadius(10)
+                        .onChange(of: pasteText) { detectFilePath() }
+                        .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
+                            handleDrop(providers)
+                            return true
+                        }
 
                     // ASR model selector (left of mic)
                     Menu {
@@ -635,16 +648,45 @@ struct InputBar: View {
         }
     }
 
-    func pickFiles(types: [String]) {
+    func handleDrop(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier("public.file-url") {
+                provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { data, _ in
+                    guard let data = data as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    let ext = url.pathExtension.lowercased()
+                    let icon = ["png","jpg","jpeg","gif","webp","heic"].contains(ext) ? "photo" :
+                               ext == "pdf" ? "doc.richtext" :
+                               ["md","markdown","txt"].contains(ext) ? "doc.text" : "doc"
+                    DispatchQueue.main.async {
+                        attachedFiles.append(AttachedFile(name: url.lastPathComponent, path: url.path, icon: icon))
+                    }
+                }
+            }
+        }
+    }
+
+    func detectFilePath() {
+        let text = pasteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // If the entire input looks like a file path, auto-convert to attachment
+        if (text.hasPrefix("~/") || text.hasPrefix("/")) && text.hasSuffix(".md") && !text.contains("\n") {
+            let expanded = (text as NSString).expandingTildeInPath
+            let icon = FileManager.default.fileExists(atPath: expanded) ? "doc.text" : "doc"
+            attachedFiles.append(AttachedFile(name: (text as NSString).lastPathComponent, path: text, icon: icon))
+            pasteText = ""
+        }
+    }
+
+    func pickAnyFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = types.compactMap { .init($0) }
         panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Add files or photos"
         if panel.runModal() == .OK {
             for url in panel.urls {
                 let ext = url.pathExtension.lowercased()
-                let icon = ["png","jpg","jpeg","gif","webp"].contains(ext) ? "photo" :
+                let icon = ["png","jpg","jpeg","gif","webp","heic"].contains(ext) ? "photo" :
                            ext == "pdf" ? "doc.richtext" :
-                           ["md","markdown"].contains(ext) ? "doc.text" : "doc"
+                           ["md","markdown","txt"].contains(ext) ? "doc.text" : "doc"
                 attachedFiles.append(AttachedFile(name: url.lastPathComponent, path: url.path, icon: icon))
             }
         }

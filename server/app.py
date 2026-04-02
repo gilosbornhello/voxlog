@@ -225,6 +225,40 @@ async def count_endpoint(_auth: None = Depends(verify_token)) -> dict:
     return {"count": await _archive.count()}
 
 
+@app.get("/v1/stats")
+async def stats_endpoint(_auth: None = Depends(verify_token)) -> dict:
+    from core.stats import calculate_stats
+    assert _config
+    stats = calculate_stats(_config.db_path)
+    return {
+        "total_recordings": stats.total_recordings,
+        "total_duration_min": round(stats.total_duration_min, 1),
+        "today_recordings": stats.today_recordings,
+        "today_duration_min": round(stats.today_duration_min, 1),
+        "asr_breakdown": stats.asr_breakdown,
+        "llm_breakdown": stats.llm_breakdown,
+        "avg_latency_ms": round(stats.avg_latency_ms),
+        "estimated_monthly_cost_cny": round(stats.estimated_monthly_cost_cny, 1),
+    }
+
+
+@app.post("/v1/env")
+async def switch_env_endpoint(
+    env: str = Form(...),
+    _auth: None = Depends(verify_token),
+) -> dict:
+    assert _config
+    new_env = Environment(env)
+    _config.switch_env(new_env)
+    logger.info("env.switched", env=new_env.value)
+    return {"env": new_env.value, "route": {
+        "asr_main": _config.route.asr.main.value,
+        "asr_fallback": _config.route.asr.fallback.value,
+        "llm_main": _config.route.llm.main.value,
+        "llm_fallback": _config.route.llm.fallback.value,
+    }}
+
+
 def main():
     config = get_config()
     structlog.configure(

@@ -15,9 +15,23 @@ enum VoxLogEntry {
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
+    var dictWindow: NSWindow?
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Build menu bar
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "VoxLog")
+        appMenu.addItem(withTitle: "Dictionary...", action: #selector(openDictionary), keyEquivalent: "d")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Sync to Obsidian", action: #selector(syncObsidian), keyEquivalent: "s")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Quit VoxLog", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+        NSApp.mainMenu = mainMenu
+
         let contentView = MainLayout().environmentObject(appState)
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 700),
@@ -32,6 +46,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         Task { await appState.start() }
     }
+
+    @objc func openDictionary() {
+        if let w = dictWindow, w.isVisible { w.makeKeyAndOrderFront(nil); return }
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false
+        )
+        w.title = "VoxLog Dictionary"
+        w.contentView = NSHostingView(rootView: DictionaryEditor().environmentObject(appState))
+        w.center()
+        w.makeKeyAndOrderFront(nil)
+        dictWindow = w
+    }
+
+    @objc func syncObsidian() { appState.syncToObsidian() }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) { appState.stop() }

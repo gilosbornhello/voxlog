@@ -101,14 +101,18 @@ struct VoxMessage: Identifiable {
 struct MainLayout: View {
     @EnvironmentObject var appState: AppState
     @State private var showSidebar = true
+    @State private var showPreview = false
+    @State private var previewPath = ""
 
     var body: some View {
         HStack(spacing: 0) {
+            // Left sidebar: Agents
             if showSidebar {
                 SidebarView().environmentObject(appState).frame(width: 160)
                 Divider()
             }
 
+            // Center: Chat
             VStack(spacing: 0) {
                 // Toolbar
                 HStack {
@@ -125,18 +129,35 @@ struct MainLayout: View {
                     }
                     Circle().fill(appState.serverRunning ? .green : .red).frame(width: 6, height: 6)
                     Text(appState.envLabel).font(.caption).foregroundColor(.secondary)
+
+                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showPreview.toggle() } }) {
+                        Image(systemName: "sidebar.right").foregroundColor(showPreview ? .accentColor : .secondary)
+                    }.buttonStyle(.plain)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
 
                 Divider()
 
-                // Chat area
-                ChatArea().environmentObject(appState)
+                // Chat area (passes file tap handler)
+                ChatArea(onFileTap: { path in
+                    previewPath = path
+                    withAnimation(.easeInOut(duration: 0.2)) { showPreview = true }
+                }).environmentObject(appState)
 
                 Divider()
 
                 // Input bar
                 InputBar().environmentObject(appState)
+            }
+
+            // Right sidebar: Markdown preview
+            if showPreview {
+                Divider()
+                MarkdownPreview(filePath: previewPath, onClose: {
+                    withAnimation(.easeInOut(duration: 0.2)) { showPreview = false }
+                })
+                .frame(width: 300)
+                .transition(.move(edge: .trailing))
             }
         }
     }
@@ -281,6 +302,7 @@ struct AgentRow: View {
 
 struct ChatArea: View {
     @EnvironmentObject var appState: AppState
+    var onFileTap: ((String) -> Void)?
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -293,7 +315,7 @@ struct ChatArea: View {
                 } else {
                     LazyVStack(spacing: 6) {
                         ForEach(appState.messages) { msg in
-                            ChatBubble(message: msg).id(msg.id)
+                            ChatBubble(message: msg, onFileTap: onFileTap).id(msg.id)
                         }
                         if appState.isRecording {
                             HStack { Spacer(); ListeningIndicator() }.padding(.horizontal, 16).id("listening")
@@ -318,8 +340,11 @@ struct ChatArea: View {
 
 struct ChatBubble: View {
     let message: VoxMessage
+    var onFileTap: ((String) -> Void)?
     @State private var isHovered = false
     @State private var copied = false
+
+    var filePaths: [String] { extractFilePaths(from: message.text) }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -327,13 +352,30 @@ struct ChatBubble: View {
 
             VStack(alignment: message.role == .me ? .trailing : .leading, spacing: 3) {
                 ZStack(alignment: message.role == .me ? .topTrailing : .topLeading) {
-                    Text(message.text)
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(message.role == .me ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.08))
-                        .cornerRadius(16)
-                        .cornerRadius(message.role == .me ? 16 : 16)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(message.text)
+                            .font(.body)
+                            .textSelection(.enabled)
+
+                        // File path links
+                        ForEach(filePaths, id: \.self) { path in
+                            Button(action: { onFileTap?(path) }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "doc.text.fill").font(.caption2)
+                                    Text((path as NSString).lastPathComponent)
+                                        .font(.caption).lineLimit(1)
+                                }
+                                .foregroundColor(.accentColor)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.1))
+                                .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(message.role == .me ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.08))
+                    .cornerRadius(16)
 
                     if isHovered {
                         Button(action: { copyText() }) {

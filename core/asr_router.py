@@ -30,15 +30,22 @@ class ASRProviderClient(Protocol):
 class QwenASR:
     """Alibaba Qwen ASR via DashScope MultiModalConversation API.
 
-    Uses qwen3-asr-flash model. Audio is sent as base64 data URI.
-    For China domestic: dashscope.aliyuncs.com
-    For international: dashscope-intl.aliyuncs.com
+    Three regions:
+    - US:    dashscope-us.aliyuncs.com  + model qwen3-asr-flash-us
+    - China: dashscope.aliyuncs.com     + model qwen3-asr-flash
+    - Intl:  dashscope-intl.aliyuncs.com + model qwen3-asr-flash
     """
 
-    def __init__(self, api_key: str, international: bool = False):
+    # Region config: (base_url, model_name)
+    REGIONS = {
+        "us": ("https://dashscope-us.aliyuncs.com/api/v1", "qwen3-asr-flash-us"),
+        "cn": ("https://dashscope.aliyuncs.com/api/v1", "qwen3-asr-flash"),
+        "intl": ("https://dashscope-intl.aliyuncs.com/api/v1", "qwen3-asr-flash"),
+    }
+
+    def __init__(self, api_key: str, region: str = "us"):
         self.api_key = api_key
-        host = "dashscope-intl.aliyuncs.com" if international else "dashscope.aliyuncs.com"
-        self.base_url = f"https://{host}/api/v1"
+        self.base_url, self.model = self.REGIONS.get(region, self.REGIONS["us"])
 
     async def transcribe(self, audio: bytes) -> str:
         import base64
@@ -53,7 +60,7 @@ class QwenASR:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "qwen3-asr-flash",
+                    "model": self.model,
                     "input": {
                         "messages": [
                             {"content": [{"audio": data_uri}], "role": "user"},
@@ -122,12 +129,10 @@ class LocalWhisper:
 
 def _get_client(provider: ASRProvider, config: VoxLogConfig) -> ASRProviderClient:
     if provider == ASRProvider.QWEN:
-        # DashScope key region is determined by where the key was created, not
-        # where the request originates. Default to domestic (most users register
-        # on Chinese aliyun console). Set DASHSCOPE_INTL=1 if you have an intl key.
         import os
-        international = os.getenv("DASHSCOPE_INTL", "0") == "1"
-        return QwenASR(config.dashscope_api_key, international=international)
+        # Region: us (default for home/US exit), cn (office/China), intl
+        region = os.getenv("DASHSCOPE_REGION", "us")
+        return QwenASR(config.dashscope_api_key, region=region)
     elif provider == ASRProvider.OPENAI_WHISPER:
         return OpenAIWhisper(config.openai_api_key)
     elif provider == ASRProvider.LOCAL_WHISPER:

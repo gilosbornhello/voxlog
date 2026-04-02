@@ -111,11 +111,14 @@ class SiliconFlowASR:
     """SenseVoice ASR via SiliconFlow (OpenAI-compatible API).
 
     Free tier: 20M tokens on registration. Fast inference (5-15x faster than Whisper).
-    Best fallback option for China domestic network.
+    Best option for China domestic network.
     """
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, base_url: str = "", model: str = ""):
+        import os
         self.api_key = api_key
+        self.base_url = base_url or os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")
+        self.model = model or os.getenv("SILICONFLOW_MODEL", "FunAudioLLM/SenseVoiceSmall")
 
     async def transcribe(self, audio: bytes) -> str:
         from core.audio import detect_format
@@ -124,10 +127,10 @@ class SiliconFlowASR:
         mime = {"wav": "audio/wav", "ogg": "audio/ogg", "amr": "audio/amr"}.get(fmt, "audio/wav")
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                "https://api.siliconflow.cn/v1/audio/transcriptions",
+                f"{self.base_url}/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 files={"file": (f"audio.{ext}", audio, mime)},
-                data={"model": "FunAudioLLM/SenseVoiceSmall"},
+                data={"model": self.model},
             )
             resp.raise_for_status()
             return resp.json()["text"]

@@ -32,6 +32,7 @@ dev = [
 
 [project.scripts]
 voxlog-server = "server.app:main"
+voxlog = "cli:main"
 
 [build-system]
 requires = ["hatchling"]

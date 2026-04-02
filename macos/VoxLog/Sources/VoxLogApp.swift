@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 @main
 struct VoxLogApp: App {
@@ -23,9 +24,11 @@ class AppState: ObservableObject {
     @Published var isRecording = false
     @Published var isProcessing = false
     @Published var lastError: String?
+    @Published var lastResult: String?
     @Published var serverRunning = false
     @Published var environment: VoxEnvironment = .home
     @Published var totalRecordings: Int = 0
+    @Published var permissionsOK = false
 
     let processManager = ProcessManager()
     let audioRecorder = AudioRecorder()
@@ -34,6 +37,7 @@ class AppState: ObservableObject {
     let hotkeyManager = HotkeyManager()
 
     var statusIcon: String {
+        if !permissionsOK { return "exclamationmark.lock.fill" }
         if isRecording { return "mic.fill" }
         if isProcessing { return "ellipsis.circle" }
         if lastError != nil { return "exclamationmark.triangle.fill" }
@@ -42,15 +46,22 @@ class AppState: ObservableObject {
     }
 
     func start() async {
+        // Check permissions first
+        permissionsOK = checkPermissions()
+        if !permissionsOK {
+            lastError = "Needs permissions. Click 'Grant Permissions' in menu."
+            return
+        }
+
         // Start Python server
         do {
             try await processManager.startServer()
             serverRunning = true
 
-            // Wait for server to be ready
-            try await coreBridge.waitForHealth(maxRetries: 10, delayMs: 500)
+            // Wait for server ready
+            try await coreBridge.waitForHealth(maxRetries: 15, delayMs: 500)
 
-            // Set up hotkey callback
+            // Register hotkey
             hotkeyManager.onRecordStart = { [weak self] in
                 Task { @MainActor in
                     self?.startRecording()
@@ -65,8 +76,43 @@ class AppState: ObservableObject {
 
             lastError = nil
         } catch {
-            lastError = "Failed to start: \(error.localizedDescription)"
+            lastError = "Server start failed: \(error.localizedDescription)"
             serverRunning = false
+        }
+    }
+
+    func checkPermissions() -> Bool {
+        // Check Accessibility (needed for global hotkey + paste simulation)
+        let accessibilityOK = AXIsProcessTrusted()
+        if !accessibilityOK {
+            // Trigger the system prompt to add the app
+            _ = AXIsProcessTrustedWithOptions(
+                [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+            )
+        }
+        return accessibilityOK
+    }
+
+    func requestPermissions() {
+        // Trigger the Accessibility permission dialog
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+
+        // Open System Settings to Input Monitoring
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func retryAfterPermissions() {
+        permissionsOK = AXIsProcessTrusted()
+        if permissionsOK {
+            lastError = nil
+            Task {
+                await start()
+            }
+        } else {
+            lastError = "Still needs Accessibility permission. Add VoxLog in System Settings."
         }
     }
 
@@ -76,8 +122,9 @@ class AppState: ObservableObject {
             try audioRecorder.start()
             isRecording = true
             lastError = nil
+            lastResult = nil
         } catch {
-            lastError = "Recording failed: \(error.localizedDescription)"
+            lastError = "Mic error: \(error.localizedDescription)"
         }
     }
 
@@ -88,16 +135,18 @@ class AppState: ObservableObject {
 
         do {
             let audioData = try audioRecorder.stop()
+            let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
             let result = try await coreBridge.voice(
                 audio: audioData,
                 env: environment,
-                targetApp: NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+                targetApp: frontApp
             )
             pasteManager.pasteText(result.polishedText)
             totalRecordings += 1
+            lastResult = result.polishedText
             lastError = nil
         } catch {
-            lastError = "Processing failed: \(error.localizedDescription)"
+            lastError = "\(error.localizedDescription)"
         }
 
         isProcessing = false

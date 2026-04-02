@@ -2,7 +2,7 @@ import Foundation
 
 /// Manages the VoxLog Python server subprocess.
 /// Spawns on app launch, health-checks every 5s, auto-restarts up to 3 times.
-final class ProcessManager {
+final class ProcessManager: @unchecked Sendable {
     private var process: Process?
     private var healthTimer: Timer?
     private var restartCount = 0
@@ -21,9 +21,6 @@ final class ProcessManager {
     }
 
     private var projectRoot: String {
-        // Navigate from macos/VoxLog/Sources/ up to voxlog/
-        let bundle = Bundle.main.bundlePath
-        // When running from Xcode or swift build, find the voxlog root
         if let envRoot = ProcessInfo.processInfo.environment["VOXLOG_ROOT"] {
             return envRoot
         }

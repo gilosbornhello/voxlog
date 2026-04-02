@@ -95,10 +95,19 @@ PLIST
 
 echo ""
 echo "Built: $APP_DIR"
+
+# Auto-install to /Applications/
+echo "Installing to /Applications/..."
+rm -rf /Applications/VoxLog.app
+cp -r "$APP_DIR" /Applications/VoxLog.app
+
 echo ""
-echo "To install:"
-echo "  cp -r $APP_DIR /Applications/"
+echo "=== VoxLog.app installed ==="
 echo ""
-echo "Then open VoxLog from Applications or Spotlight."
-echo "macOS will prompt for Microphone, Input Monitoring, and Accessibility permissions."
-echo "Grant all three — VoxLog needs them to record and paste."
+echo "Launch: open /Applications/VoxLog.app"
+echo "   or: Spotlight → VoxLog"
+echo ""
+echo "First launch: macOS will ask for Accessibility + Microphone permissions."
+echo "Click 'Grant Permissions' in the menu bar dropdown."
+echo ""
+echo "Usage: Hold Left Alt to record, release to paste."

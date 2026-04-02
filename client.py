@@ -146,13 +146,13 @@ def get_frontmost_app() -> str:
 
 
 def on_press(key):
-    # Right Option = Key.alt_r
-    if key == keyboard.Key.alt_r:
+    # Left Alt = Left Option on macOS (Windows 104-key keyboard compatible)
+    if key == keyboard.Key.alt_l:
         start_recording()
 
 
 def on_release(key):
-    if key == keyboard.Key.alt_r and recording:
+    if key == keyboard.Key.alt_l and recording:
         # Process in background thread so keyboard listener isn't blocked
         threading.Thread(target=stop_recording_and_process, daemon=True).start()
 
@@ -178,7 +178,7 @@ def main():
         sys.exit(1)
 
     print("✅ Server connected.")
-    print("🎤 Ready. Hold Right Option to record, release to paste.")
+    print("🎤 Ready. Hold Left Alt (Left Option) to record, release to paste.")
     print("   Press Ctrl+C to quit.")
     print()
 

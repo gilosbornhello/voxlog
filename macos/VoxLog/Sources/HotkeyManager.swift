@@ -10,8 +10,8 @@ final class HotkeyManager {
 
     private var eventMonitor: Any?
     private var isKeyDown = false
-    // Using Right Option key (keyCode 61) as default — less likely to conflict
-    private let triggerKeyCode: UInt16 = 61
+    // Left Alt (= Left Option on macOS) keyCode 58. Windows 104-key keyboard compatible.
+    private let triggerKeyCode: UInt16 = 58
 
     func register() {
         // Check accessibility permission

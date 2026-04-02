@@ -114,7 +114,11 @@ async def voice_endpoint(
 
     # Read audio
     audio_bytes = await audio.read()
-    environment = Environment(env)
+    # Handle "auto" env — use current server config
+    if env == "auto" or env not in ("home", "office"):
+        environment = _config.env
+    else:
+        environment = _config.env if env in ("auto", "") else Environment(env)
 
     if len(audio_bytes) < 100:
         raise HTTPException(status_code=422, detail="Audio too short or empty")
@@ -192,7 +196,7 @@ async def transcribe_endpoint(
             raise HTTPException(status_code=413, detail=err)
         raise HTTPException(status_code=422, detail=err)
 
-    environment = Environment(env)
+    environment = _config.env if env in ("auto", "") else Environment(env)
     original_env = _config.env
     if environment != _config.env:
         _config.switch_env(environment)
@@ -214,7 +218,7 @@ async def polish_endpoint(
     _auth: None = Depends(verify_token),
 ) -> PolishResult:
     assert _config and _dictionary
-    environment = Environment(env)
+    environment = _config.env if env in ("auto", "") else Environment(env)
     original_env = _config.env
     if environment != _config.env:
         _config.switch_env(environment)

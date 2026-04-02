@@ -53,6 +53,10 @@ cat > "$MACOS_DIR/VoxLog" << 'LAUNCHER'
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RESOURCES="$DIR/Resources"
 PYTHON="$RESOURCES/python-env/bin/python3"
+# Fallback if bundled Python doesn't work
+if ! "$PYTHON" --version > /dev/null 2>&1; then
+    PYTHON=$(which python3 2>/dev/null || echo "/opt/homebrew/bin/python3")
+fi
 SERVER_DIR="$RESOURCES/voxlog"
 
 # Ensure ~/.voxlog exists

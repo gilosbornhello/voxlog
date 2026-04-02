@@ -29,6 +29,12 @@ final class ProcessManager: @unchecked Sendable {
     }
 
     func startServer() async throws {
+        // Check if server is already running (started manually or by another instance)
+        if await isServerRunning() {
+            print("[VoxLog] Server already running on port 7890, reusing")
+            return
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: pythonPath)
         process.arguments = ["-m", "uvicorn", "server.app:app",
@@ -103,6 +109,17 @@ final class ProcessManager: @unchecked Sendable {
             }
         }
         task.resume()
+    }
+
+    private func isServerRunning() async -> Bool {
+        do {
+            let url = URL(string: "http://127.0.0.1:7890/health")!
+            let (_, response) = try await URLSession.shared.data(from: url)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                return true
+            }
+        } catch {}
+        return false
     }
 
     private func handleTermination() {

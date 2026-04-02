@@ -78,7 +78,7 @@ class TestVoiceEndpoint:
             assert data["target_app"] == "Claude Code"
 
     def test_voice_audio_too_long(self, client):
-        wav = _make_wav(seconds=65.0)
+        wav = _make_wav(seconds=605.0)  # over 600s limit
         resp = client.post(
             "/v1/voice",
             files={"audio": ("test.wav", wav, "audio/wav")},

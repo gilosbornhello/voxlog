@@ -90,11 +90,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 enum MessageRole: String { case me, other }
 
 struct VoxMessage: Identifiable {
-    let id = UUID()
+    let id: String  // matches server record id
     let text: String
     let time: String
-    let role: MessageRole  // me = voice recording, other = pasted text
+    let role: MessageRole
     let latencyMs: Int
+    let createdAt: Date
 }
 
 // MARK: - Main Layout
@@ -366,7 +367,9 @@ struct ChatArea: View {
                 } else {
                     LazyVStack(spacing: 6) {
                         ForEach(appState.messages) { msg in
-                            ChatBubble(message: msg, onFileTap: onFileTap).id(msg.id)
+                            ChatBubble(message: msg, onFileTap: onFileTap, onRecall: {
+                                Task { await appState.recallMessage(msg.id) }
+                            }).id(msg.id)
                         }
                         if appState.isRecording {
                             HStack { Spacer(); ListeningIndicator() }.padding(.horizontal, 16).id("listening")
@@ -392,8 +395,13 @@ struct ChatArea: View {
 struct ChatBubble: View {
     let message: VoxMessage
     var onFileTap: ((String) -> Void)?
+    var onRecall: (() -> Void)?
     @State private var isHovered = false
     @State private var copied = false
+
+    var canRecall: Bool {
+        Date().timeIntervalSince(message.createdAt) < 120 // 2 minutes
+    }
 
     var filePaths: [String] { extractFilePaths(from: message.text) }
 
@@ -451,6 +459,15 @@ struct ChatBubble: View {
                     if message.latencyMs > 0 { Text("· \(message.latencyMs)ms") }
                     if message.role == .me {
                         Image(systemName: "mic.fill").font(.system(size: 8))
+                    }
+
+                    // Recall button (within 2 minutes)
+                    if isHovered && canRecall {
+                        Button(action: { onRecall?() }) {
+                            Text("Recall")
+                                .font(.caption2)
+                                .foregroundColor(.red.opacity(0.7))
+                        }.buttonStyle(.plain)
                     }
                 }
                 .font(.caption2)
@@ -819,9 +836,13 @@ class AppState: ObservableObject {
                       let ts = item["created_at"] as? String else { return nil }
                 let app = item["target_app"] as? String ?? ""
                 let role: MessageRole = app.contains("paste") ? .other : .me
+                let recordId = item["id"] as? String ?? UUID().uuidString
+                let isoFmt = ISO8601DateFormatter()
+                let createdAt = isoFmt.date(from: ts) ?? Date.distantPast
                 return VoxMessage(
-                    text: text, time: String(ts.dropFirst(11).prefix(5)),
-                    role: role, latencyMs: item["latency_ms"] as? Int ?? 0
+                    id: recordId, text: text, time: String(ts.dropFirst(11).prefix(5)),
+                    role: role, latencyMs: item["latency_ms"] as? Int ?? 0,
+                    createdAt: createdAt
                 )
             }
             totalRecordings = messages.count
@@ -954,6 +975,20 @@ class AppState: ObservableObject {
         isProcessing = false
     }
 
+    // MARK: - Recall Message
+
+    func recallMessage(_ id: String) async {
+        // Delete from server
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/history/\(id)") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        _ = try? await URLSession.shared.data(for: req)
+
+        // Remove from local list
+        messages.removeAll { $0.id == id }
+    }
+
     // MARK: - ASR Model Switch
 
     func switchASR(_ model: String) {
@@ -987,7 +1022,7 @@ class AppState: ObservableObject {
 
     private func appendMessage(text: String, role: MessageRole, latency: Int) {
         let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
-        messages.append(VoxMessage(text: text, time: fmt.string(from: Date()), role: role, latencyMs: latency))
+        messages.append(VoxMessage(id: UUID().uuidString, text: text, time: fmt.string(from: Date()), role: role, latencyMs: latency, createdAt: Date()))
         totalRecordings += 1; lastError = nil
         // Update agent count
         if let idx = agents.firstIndex(where: { $0.id == selectedAgent }) {

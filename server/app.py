@@ -335,6 +335,30 @@ async def count_endpoint(_auth: None = Depends(verify_token)) -> dict:
     return {"count": await _archive.count()}
 
 
+@app.delete("/v1/history/{record_id}")
+async def delete_record_endpoint(record_id: str, _auth: None = Depends(verify_token)) -> dict:
+    """Delete a record (recall). Only works within 2 minutes of creation."""
+    assert _archive and _archive._db
+    # Check timestamp
+    cursor = await _archive._db.execute(
+        "SELECT created_at FROM voice_log WHERE id = ?", (record_id,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    from datetime import datetime, timezone
+    created = datetime.fromisoformat(row[0])
+    now = datetime.now(timezone.utc)
+    if (now - created).total_seconds() > 120:
+        raise HTTPException(status_code=403, detail="Cannot recall after 2 minutes")
+
+    await _archive._db.execute("DELETE FROM voice_log WHERE id = ?", (record_id,))
+    await _archive._db.commit()
+    logger.info("record.recalled", id=record_id)
+    return {"deleted": record_id}
+
+
 @app.get("/v1/stats")
 async def stats_endpoint(_auth: None = Depends(verify_token)) -> dict:
     from core.stats import calculate_stats

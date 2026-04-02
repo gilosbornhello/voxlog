@@ -448,7 +448,9 @@ struct ChatArea: View {
     var onFileTap: ((String) -> Void)?
     @State private var showForwardPicker = false
     @State private var forwardingMessage: VoxMessage?
+    @State private var showBatchForward = false
     var body: some View {
+        VStack(spacing: 0) {
         ScrollViewReader { proxy in
             ScrollView {
                 if appState.messages.isEmpty && !appState.isRecording {
@@ -460,12 +462,32 @@ struct ChatArea: View {
                 } else {
                     LazyVStack(spacing: 6) {
                         ForEach(appState.messages) { msg in
-                            ChatBubble(message: msg, onFileTap: onFileTap, onRecall: {
-                                Task { await appState.recallMessage(msg.id) }
-                            }, onForward: {
-                                forwardingMessage = msg
-                                showForwardPicker = true
-                            }).id(msg.id)
+                            HStack(spacing: 6) {
+                                // Multi-select checkbox
+                                if appState.isMultiSelectMode {
+                                    Button(action: { appState.toggleMessageSelection(msg.id) }) {
+                                        Image(systemName: appState.selectedMessageIds.contains(msg.id) ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(appState.selectedMessageIds.contains(msg.id) ? .accentColor : .secondary.opacity(0.4))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.leading, 4)
+                                }
+
+                                ChatBubble(message: msg, onFileTap: onFileTap, onRecall: {
+                                    Task { await appState.recallMessage(msg.id) }
+                                }, onForward: {
+                                    forwardingMessage = msg
+                                    showForwardPicker = true
+                                })
+                            }
+                            .id(msg.id)
+                            .onLongPressGesture {
+                                if !appState.isMultiSelectMode {
+                                    appState.isMultiSelectMode = true
+                                    appState.toggleMessageSelection(msg.id)
+                                }
+                            }
                         }
                         if appState.isRecording {
                             HStack { Spacer(); ListeningIndicator() }.padding(.horizontal, 16).id("listening")
@@ -491,6 +513,31 @@ struct ChatArea: View {
                 showForwardPicker = false
             }
         }
+        .sheet(isPresented: $showBatchForward) {
+            ForwardPicker(agents: appState.agents) { targetAgent in
+                Task { await appState.forwardSelected(to: targetAgent) }
+                showBatchForward = false
+            }
+        }
+
+        // Multi-select bottom bar
+        if appState.isMultiSelectMode {
+            Divider()
+            HStack {
+                Button("Cancel") { appState.toggleMultiSelect() }
+                    .controlSize(.small)
+                Spacer()
+                Text("\(appState.selectedMessageIds.count) selected")
+                    .font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Button("Forward") { showBatchForward = true }
+                    .controlSize(.small)
+                    .disabled(appState.selectedMessageIds.isEmpty)
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+        }
+        } // close VStack
     }
 }
 
@@ -926,6 +973,8 @@ class AppState: ObservableObject {
     @Published var totalRecordings = 0
     @Published var currentASRLabel = "Qwen ASR (US)"
     @Published var currentASRShort = "Qwen US"
+    @Published var isMultiSelectMode = false
+    @Published var selectedMessageIds: Set<String> = []
     var previewFile: ((String) -> Void)?
 
     var selectedDateLabel: String {
@@ -1175,6 +1224,39 @@ class AppState: ObservableObject {
 
         // Remove from local list
         messages.removeAll { $0.id == id }
+    }
+
+    // MARK: - Multi-Select
+
+    func toggleMultiSelect() {
+        isMultiSelectMode.toggle()
+        if !isMultiSelectMode { selectedMessageIds.removeAll() }
+    }
+
+    func toggleMessageSelection(_ id: String) {
+        if selectedMessageIds.contains(id) {
+            selectedMessageIds.remove(id)
+        } else if selectedMessageIds.count < 50 {
+            selectedMessageIds.insert(id)
+        }
+    }
+
+    func forwardSelected(to targetAgent: String) async {
+        let selected = messages.filter { selectedMessageIds.contains($0.id) }
+        let combined = selected.map { "[\($0.time)] \($0.text)" }.joined(separator: "\n\n")
+        let text = "[Forwarded \(selected.count) messages]\n\n" + combined
+
+        let url = URL(string: "http://127.0.0.1:7890/v1/save")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        req.httpBody = "text=\(encoded)&source=forward&target_app=forward&agent=\(targetAgent)".data(using: .utf8)
+        _ = try? await URLSession.shared.data(for: req)
+
+        isMultiSelectMode = false
+        selectedMessageIds.removeAll()
     }
 
     // MARK: - Forward Message

@@ -1,21 +1,60 @@
 import SwiftUI
-import ServiceManagement
+import AppKit
 
+// Manual entry point — SPM executables need explicit NSApplication setup
 @main
-struct VoxLogApp: App {
-    @StateObject private var appState = AppState()
+enum VoxLogEntry {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
+    }
+}
 
-    var body: some Scene {
-        MenuBarExtra("VoxLog", systemImage: appState.statusIcon) {
-            MenuBarView()
-                .environmentObject(appState)
-        }
-        .menuBarExtraStyle(.window)
+@MainActor
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var window: NSWindow!
+    let appState = AppState()
 
-        Settings {
-            SettingsView()
-                .environmentObject(appState)
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Create the window
+        let contentView = MainWindowView().environmentObject(appState)
+
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 550),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "VoxLog"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        // Also add menu bar icon
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "VoxLog")
         }
+
+        // Activate app (bring to front)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Start
+        Task {
+            await appState.start()
+        }
+
+        print("[VoxLog] Window opened")
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        appState.stop()
     }
 }
 
@@ -46,74 +85,49 @@ class AppState: ObservableObject {
     }
 
     func start() async {
-        // Check permissions first
-        permissionsOK = checkPermissions()
+        permissionsOK = AXIsProcessTrusted()
         if !permissionsOK {
-            lastError = "Needs permissions. Click 'Grant Permissions' in menu."
-            return
-        }
-
-        // Start Python server
-        do {
-            try await processManager.startServer()
-            serverRunning = true
-
-            // Wait for server ready
-            try await coreBridge.waitForHealth(maxRetries: 15, delayMs: 500)
-
-            // Register hotkey
-            hotkeyManager.onRecordStart = { [weak self] in
-                Task { @MainActor in
-                    self?.startRecording()
-                }
-            }
-            hotkeyManager.onRecordStop = { [weak self] in
-                Task { @MainActor in
-                    await self?.stopRecordingAndProcess()
-                }
-            }
-            hotkeyManager.register()
-
-            lastError = nil
-        } catch {
-            lastError = "Server start failed: \(error.localizedDescription)"
-            serverRunning = false
-        }
-    }
-
-    func checkPermissions() -> Bool {
-        // Check Accessibility (needed for global hotkey + paste simulation)
-        let accessibilityOK = AXIsProcessTrusted()
-        if !accessibilityOK {
-            // Trigger the system prompt to add the app
             _ = AXIsProcessTrustedWithOptions(
                 [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
             )
+            lastError = "Needs Accessibility permission. Grant it and click Retry."
         }
-        return accessibilityOK
+
+        do {
+            try await processManager.startServer()
+            serverRunning = true
+            try await coreBridge.waitForHealth(maxRetries: 15, delayMs: 500)
+            print("[VoxLog] Server connected")
+        } catch {
+            lastError = "Server: \(error.localizedDescription)"
+            serverRunning = false
+            return
+        }
+
+        if permissionsOK { setupHotkey() }
+    }
+
+    func setupHotkey() {
+        hotkeyManager.onRecordStart = { [weak self] in
+            Task { @MainActor in self?.startRecording() }
+        }
+        hotkeyManager.onRecordStop = { [weak self] in
+            Task { @MainActor in await self?.stopRecordingAndProcess() }
+        }
+        hotkeyManager.register()
+        lastError = nil
     }
 
     func requestPermissions() {
-        // Trigger the Accessibility permission dialog
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-
-        // Open System Settings to Input Monitoring
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(url)
-        }
+        _ = AXIsProcessTrustedWithOptions(
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        )
     }
 
     func retryAfterPermissions() {
         permissionsOK = AXIsProcessTrusted()
-        if permissionsOK {
-            lastError = nil
-            Task {
-                await start()
-            }
-        } else {
-            lastError = "Still needs Accessibility permission. Add VoxLog in System Settings."
-        }
+        if permissionsOK { setupHotkey(); lastError = nil }
+        else { lastError = "Still needs Accessibility. Add VoxLog in System Settings." }
     }
 
     func startRecording() {
@@ -121,53 +135,36 @@ class AppState: ObservableObject {
         do {
             try audioRecorder.start()
             isRecording = true
-            lastError = nil
-            lastResult = nil
-        } catch {
-            lastError = "Mic error: \(error.localizedDescription)"
-        }
+            lastError = nil; lastResult = nil
+        } catch { lastError = "Mic: \(error.localizedDescription)" }
     }
 
     func stopRecordingAndProcess() async {
         guard isRecording else { return }
-        isRecording = false
-        isProcessing = true
-
+        isRecording = false; isProcessing = true
         do {
             let audioData = try audioRecorder.stop()
             let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
-            let result = try await coreBridge.voice(
-                audio: audioData,
-                env: environment,
-                targetApp: frontApp
-            )
+            let result = try await coreBridge.voice(audio: audioData, env: environment, targetApp: frontApp)
             pasteManager.pasteText(result.polishedText)
-            totalRecordings += 1
-            lastResult = result.polishedText
-            lastError = nil
-        } catch {
-            lastError = "\(error.localizedDescription)"
-        }
-
+            totalRecordings += 1; lastResult = result.polishedText; lastError = nil
+        } catch { lastError = "\(error.localizedDescription)" }
         isProcessing = false
     }
 
     func stop() {
-        hotkeyManager.unregister()
-        audioRecorder.stopIfNeeded()
-        processManager.stopServer()
-        serverRunning = false
+        hotkeyManager.unregister(); audioRecorder.stopIfNeeded()
+        processManager.stopServer(); serverRunning = false
     }
 }
 
 enum VoxEnvironment: String, CaseIterable {
     case home = "home"
     case office = "office"
-
     var label: String {
         switch self {
-        case .home: return "Home (US exit)"
-        case .office: return "Office (China)"
+        case .home: return "Home (US)"
+        case .office: return "Office (CN)"
         }
     }
 }

@@ -19,7 +19,6 @@ import structlog
 import uvicorn
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
-from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from core.archive import Archive
@@ -73,18 +72,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VoxLog", version="0.1.0", lifespan=lifespan)
-
-# Serve Web UI
-_static_dir = Path(__file__).parent / "static"
-if _static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(_static_dir), html=True), name="static")
-
-from fastapi.responses import RedirectResponse
-
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/static/index.html")
-
 
 def verify_token(authorization: str | None = Header(None)) -> None:
     if not _config or not _config.api_token:
@@ -369,8 +356,15 @@ async def detect_env_endpoint(_auth: None = Depends(verify_token)) -> dict:
     invalidate_cache()
     detected = await detect_environment()
     _config.switch_env(detected)
+    import os
+    region = os.getenv("DASHSCOPE_REGION", "us")
+    asr_main = _config.route.asr.main.value
+    # Show specific model version for Qwen ASR
+    asr_detail = asr_main
+    if asr_main == "qwen":
+        asr_detail = f"qwen3-asr-flash-{region}" if region != "cn" else "qwen3-asr-flash"
     return {"env": detected.value, "route": {
-        "asr_main": _config.route.asr.main.value,
+        "asr_main": asr_detail,
         "asr_fallback": _config.route.asr.fallback.value,
         "llm_main": _config.route.llm.main.value,
         "llm_fallback": _config.route.llm.fallback.value,

@@ -509,7 +509,7 @@ struct ChatArea: View {
                                 })
                             }
                             .id(msg.id)
-                            .onLongPressGesture {
+                            .onLongPressGesture(minimumDuration: 2.0) {
                                 if !appState.isMultiSelectMode {
                                     appState.isMultiSelectMode = true
                                     appState.toggleMessageSelection(msg.id)

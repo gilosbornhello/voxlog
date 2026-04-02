@@ -107,6 +107,32 @@ class OpenAIWhisper:
             return resp.json()["text"]
 
 
+class SiliconFlowASR:
+    """SenseVoice ASR via SiliconFlow (OpenAI-compatible API).
+
+    Free tier: 20M tokens on registration. Fast inference (5-15x faster than Whisper).
+    Best fallback option for China domestic network.
+    """
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    async def transcribe(self, audio: bytes) -> str:
+        from core.audio import detect_format
+        fmt = detect_format(audio)
+        ext = {"wav": "wav", "ogg": "ogg", "amr": "amr"}.get(fmt, "wav")
+        mime = {"wav": "audio/wav", "ogg": "audio/ogg", "amr": "audio/amr"}.get(fmt, "audio/wav")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.siliconflow.cn/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                files={"file": (f"audio.{ext}", audio, mime)},
+                data={"model": "FunAudioLLM/SenseVoiceSmall"},
+            )
+            resp.raise_for_status()
+            return resp.json()["text"]
+
+
 class LocalWhisper:
     """Local faster-whisper inference."""
 
@@ -144,6 +170,8 @@ def _get_client(provider: ASRProvider, config: VoxLogConfig) -> ASRProviderClien
         return OpenAIWhisper(config.openai_api_key)
     elif provider == ASRProvider.LOCAL_WHISPER:
         return LocalWhisper()
+    elif provider == ASRProvider.SILICONFLOW:
+        return SiliconFlowASR(config.siliconflow_api_key)
     raise ASRError(f"Unknown ASR provider: {provider}")
 
 

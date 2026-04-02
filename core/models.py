@@ -18,6 +18,7 @@ class ASRProvider(str, Enum):
     QWEN = "qwen"
     OPENAI_WHISPER = "openai_whisper"
     LOCAL_WHISPER = "local_whisper"
+    SILICONFLOW = "siliconflow"  # SenseVoice via SiliconFlow (OpenAI-compatible)
 
 
 class LLMProvider(str, Enum):

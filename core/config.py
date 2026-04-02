@@ -51,7 +51,7 @@ ROUTE_TABLE: dict[Environment, EnvConfig] = {
         llm=LLMConfig(main=LLMProvider.OPENAI_GPT, fallback=LLMProvider.QWEN_TURBO),
     ),
     Environment.OFFICE: EnvConfig(
-        asr=ASRConfig(main=ASRProvider.QWEN, fallback=ASRProvider.LOCAL_WHISPER),
+        asr=ASRConfig(main=ASRProvider.QWEN, fallback=ASRProvider.SILICONFLOW),
         llm=LLMConfig(main=LLMProvider.QWEN_TURBO, fallback=LLMProvider.OLLAMA),
     ),
 }
@@ -67,6 +67,9 @@ class VoxLogConfig:
         default_factory=lambda: os.getenv("DASHSCOPE_API_KEY", "")
     )
     openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    siliconflow_api_key: str = field(
+        default_factory=lambda: os.getenv("SILICONFLOW_API_KEY", "")
+    )
     db_path: Path = field(default_factory=lambda: VOXLOG_DIR / "history.db")
     terms_path: Path = field(
         default_factory=lambda: Path(__file__).parent.parent / "terms.json"

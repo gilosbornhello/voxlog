@@ -53,6 +53,15 @@ async def lifespan(app: FastAPI):
     await _archive.init()
 
     _dictionary = Dictionary(_config.terms_path)
+
+    # Auto-detect network environment if VOXLOG_ENV not explicitly set
+    import os
+    if not os.getenv("VOXLOG_ENV"):
+        from core.network_detect import detect_environment
+        detected = await detect_environment()
+        _config.switch_env(detected)
+        logger.info("server.auto_env", env=detected.value)
+
     logger.info("server.started", host=_config.host, port=_config.port, env=_config.env.value)
 
     yield
@@ -308,6 +317,22 @@ async def switch_env_endpoint(
     _config.switch_env(new_env)
     logger.info("env.switched", env=new_env.value)
     return {"env": new_env.value, "route": {
+        "asr_main": _config.route.asr.main.value,
+        "asr_fallback": _config.route.asr.fallback.value,
+        "llm_main": _config.route.llm.main.value,
+        "llm_fallback": _config.route.llm.fallback.value,
+    }}
+
+
+@app.get("/v1/detect")
+async def detect_env_endpoint(_auth: None = Depends(verify_token)) -> dict:
+    """Auto-detect network environment and switch."""
+    assert _config
+    from core.network_detect import detect_environment, invalidate_cache
+    invalidate_cache()
+    detected = await detect_environment()
+    _config.switch_env(detected)
+    return {"env": detected.value, "route": {
         "asr_main": _config.route.asr.main.value,
         "asr_fallback": _config.route.asr.fallback.value,
         "llm_main": _config.route.llm.main.value,

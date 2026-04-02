@@ -176,14 +176,37 @@ struct SidebarView: View {
 
             Divider()
 
-            Button(action: { appState.syncToObsidian() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                    Text("Sync Obsidian")
-                }.font(.caption).foregroundColor(.secondary)
-            }.buttonStyle(.plain).padding(.horizontal, 12).padding(.vertical, 8)
+            // Bottom toolbar: Sync + Dictionary + Settings
+            HStack(spacing: 12) {
+                Button(action: { appState.syncToObsidian() }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 14))
+                        Text("Sync").font(.caption2)
+                    }.foregroundColor(.secondary)
+                }.buttonStyle(.plain).help("Sync to Obsidian")
+
+                Button(action: { openDictionary() }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "character.book.closed").font(.system(size: 14))
+                        Text("Dict").font(.caption2)
+                    }.foregroundColor(.secondary)
+                }.buttonStyle(.plain).help("Personal Dictionary (Cmd+D)")
+
+                Button(action: { /* future settings */ }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "gear").font(.system(size: 14))
+                        Text("Settings").font(.caption2)
+                    }.foregroundColor(.secondary)
+                }.buttonStyle(.plain).help("Settings")
+            }
+            .padding(.vertical, 8)
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+    }
+
+    func openDictionary() {
+        // Trigger menu action
+        NSApp.sendAction(#selector(AppDelegate.openDictionary), to: nil, from: nil)
     }
 
     var topLevelAgents: [AgentInfo] {

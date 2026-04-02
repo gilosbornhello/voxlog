@@ -548,6 +548,10 @@ struct InputBar: View {
                 HStack(alignment: .bottom, spacing: 6) {
                     // + Add file (left)
                     Menu {
+                        Button(action: { pasteFilePath() }) {
+                            Label("Paste file path", systemImage: "link")
+                        }
+                        Divider()
                         Button(action: { pickFiles(types: ["public.image"]) }) {
                             Label("Image", systemImage: "photo")
                         }
@@ -599,6 +603,26 @@ struct InputBar: View {
                 }
                 .padding(.horizontal, 10).padding(.vertical, 8)
             }
+        }
+    }
+
+    func pasteFilePath() {
+        guard let str = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !str.isEmpty else { return }
+
+        // Expand ~ and check if it looks like a file path
+        let expanded = (str as NSString).expandingTildeInPath
+        let path = str.hasPrefix("/") || str.hasPrefix("~") ? str : expanded
+
+        if FileManager.default.fileExists(atPath: expanded) {
+            let ext = (expanded as NSString).pathExtension.lowercased()
+            let icon = ["png","jpg","jpeg","gif","webp"].contains(ext) ? "photo" :
+                       ext == "pdf" ? "doc.richtext" :
+                       ["md","markdown"].contains(ext) ? "doc.text" : "doc"
+            attachedFiles.append(AttachedFile(name: (path as NSString).lastPathComponent, path: path, icon: icon))
+        } else {
+            // Even if file not found locally, still attach (might be on another machine)
+            attachedFiles.append(AttachedFile(name: (path as NSString).lastPathComponent, path: path, icon: "doc.text"))
         }
     }
 

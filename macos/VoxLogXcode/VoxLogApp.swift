@@ -268,12 +268,11 @@ struct ProcessingIndicator: View {
     }
 }
 
-// MARK: - Input Bar (ChatGPT style)
+// MARK: - Input Bar
 
 struct InputBar: View {
     @EnvironmentObject var appState: AppState
-    @State private var textInput = ""
-    @State private var textSource: MessageRole = .other  // tracks where the text came from
+    @State private var pasteText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -282,8 +281,8 @@ struct InputBar: View {
                     .padding(.horizontal, 16).padding(.top, 4)
             }
 
-            // Recording mode
             if appState.isRecording {
+                // Recording mode: cancel + listening + transcribe
                 HStack(spacing: 20) {
                     Button(action: { appState.cancelRecording() }) {
                         Image(systemName: "xmark.circle.fill")
@@ -294,110 +293,52 @@ struct InputBar: View {
                     ListeningIndicator()
                     Spacer()
 
-                    Button(action: { transcribeToInput() }) {
+                    Button(action: { Task { await appState.stopAndProcess() } }) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 28)).foregroundColor(.green)
-                    }.buttonStyle(.plain).help("Transcribe")
+                    }.buttonStyle(.plain).help("Transcribe & send")
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
 
             } else if appState.isProcessing {
-                // Transcribing indicator
                 HStack {
                     Spacer()
                     ProgressView().scaleEffect(0.7)
                     Text("Transcribing...").font(.callout).foregroundColor(.secondary)
                     Spacer()
-                }
-                .padding(.vertical, 10)
+                }.padding(.vertical, 10)
 
             } else {
-                // Text input area
-                VStack(spacing: 6) {
-                    // Editable text area
-                    TextEditor(text: $textInput)
-                        .font(.body)
-                        .frame(minHeight: 36, maxHeight: 120)
-                        .padding(4)
+                // Normal mode: paste box + mic + save
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Paste AI response...", text: $pasteText, axis: .vertical)
+                        .textFieldStyle(.plain).font(.body).lineLimit(1...4)
+                        .padding(8)
                         .background(Color.primary.opacity(0.04))
                         .cornerRadius(10)
-                        .overlay(
-                            // Placeholder
-                            Group {
-                                if textInput.isEmpty {
-                                    Text("Type, paste, or record...")
-                                        .foregroundColor(.secondary.opacity(0.5))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 8)
-                                        .allowsHitTesting(false)
-                                }
-                            }, alignment: .topLeading
-                        )
 
-                    // Action buttons
-                    HStack(spacing: 12) {
-                        // Mic button (always visible)
+                    VStack(spacing: 8) {
+                        // Mic (voice → transcribe → directly to timeline as "me")
                         Button(action: { appState.startRecording() }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "mic.fill").font(.system(size: 14))
-                                Text("Record").font(.caption)
-                            }
-                            .foregroundColor(.accentColor)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Record voice → transcribe to text box")
+                            Image(systemName: "mic.circle.fill")
+                                .font(.system(size: 30)).foregroundColor(.accentColor)
+                        }.buttonStyle(.plain).help("Record & transcribe")
 
-                        Spacer()
-
-                        // Source indicator when text is present
-                        if !textInput.isEmpty {
-                            // Toggle role
-                            Button(action: { textSource = textSource == .me ? .other : .me }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: textSource == .me ? "person.fill" : "cpu")
-                                        .font(.system(size: 11))
-                                    Text(textSource == .me ? "My voice" : "AI response")
-                                        .font(.caption)
-                                }
-                                .foregroundColor(textSource == .me ? .accentColor : .orange)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(textSource == .me ? Color.accentColor.opacity(0.1) : Color.orange.opacity(0.1))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Toggle: my voice or AI response")
-
-                            // Send button
-                            Button(action: { sendText() }) {
+                        // Save paste (→ timeline as "other")
+                        if !pasteText.isEmpty {
+                            Button(action: {
+                                Task { await appState.saveText(pasteText, role: .other) }
+                                pasteText = ""
+                            }) {
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(textSource == .me ? .accentColor : .orange)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Save to timeline")
+                                    .font(.system(size: 30)).foregroundColor(.orange)
+                            }.buttonStyle(.plain).help("Save AI response")
                         }
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
             }
         }
-    }
-
-    func transcribeToInput() {
-        Task {
-            let text = await appState.transcribeOnly()
-            if let text, !text.isEmpty {
-                textInput = text
-                textSource = .me  // came from my voice
-            }
-        }
-    }
-
-    func sendText() {
-        guard !textInput.isEmpty else { return }
-        Task { await appState.saveText(textInput, role: textSource) }
-        textInput = ""
-        textSource = .other  // reset to default
     }
 }
 

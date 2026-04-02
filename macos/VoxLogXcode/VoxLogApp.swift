@@ -19,9 +19,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let contentView = MainLayout().environmentObject(appState)
-
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 700),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
@@ -29,9 +28,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
         window.makeKeyAndOrderFront(nil)
-        window.minSize = NSSize(width: 400, height: 480)
+        window.minSize = NSSize(width: 420, height: 500)
         NSApp.activate(ignoringOtherApps: true)
-
         Task { await appState.start() }
     }
 
@@ -39,7 +37,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) { appState.stop() }
 }
 
-// MARK: - Main Layout (Sidebar + Content)
+// MARK: - Message Model
+
+enum MessageRole: String { case me, other }
+
+struct VoxMessage: Identifiable {
+    let id = UUID()
+    let text: String
+    let time: String
+    let role: MessageRole  // me = voice recording, other = pasted text
+    let latencyMs: Int
+}
+
+// MARK: - Main Layout
 
 struct MainLayout: View {
     @EnvironmentObject var appState: AppState
@@ -47,56 +57,36 @@ struct MainLayout: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Sidebar (collapsible)
             if showSidebar {
-                SidebarView()
-                    .environmentObject(appState)
-                    .frame(width: 180)
-                    .transition(.move(edge: .leading))
-
+                SidebarView().environmentObject(appState).frame(width: 160)
                 Divider()
             }
 
-            // Main content
             VStack(spacing: 0) {
                 // Toolbar
                 HStack {
                     Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() } }) {
-                        Image(systemName: "sidebar.left")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Toggle sidebar")
+                        Image(systemName: "sidebar.left").foregroundColor(.secondary)
+                    }.buttonStyle(.plain)
 
-                    Text(appState.selectedDateLabel)
-                        .font(.headline)
-
+                    Text(appState.selectedDateLabel).font(.headline)
                     Spacer()
-
-                    Circle()
-                        .fill(appState.serverRunning ? .green : .red)
-                        .frame(width: 6, height: 6)
-                    Text(appState.envLabel)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Circle().fill(appState.serverRunning ? .green : .red).frame(width: 6, height: 6)
+                    Text(appState.envLabel).font(.caption).foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 12).padding(.vertical, 8)
 
                 Divider()
 
-                // Chat timeline
-                ChatTimeline()
-                    .environmentObject(appState)
+                // Chat area
+                ChatArea().environmentObject(appState)
 
                 Divider()
 
                 // Input bar
-                InputBar()
-                    .environmentObject(appState)
+                InputBar().environmentObject(appState)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
@@ -104,294 +94,261 @@ struct MainLayout: View {
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            Text("History")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
+            Text("History").font(.caption).foregroundColor(.secondary)
+                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
 
-            // Date list
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(appState.availableDates, id: \.self) { date in
-                        SidebarDateRow(date: date, isSelected: date == appState.selectedDate)
-                            .onTapGesture { appState.selectDate(date) }
+                        HStack {
+                            Text(formatDate(date)).font(.callout)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 6)
+                        .background(date == appState.selectedDate ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .cornerRadius(6)
+                        .onTapGesture { appState.selectDate(date) }
                     }
-                }
-                .padding(.horizontal, 8)
+                }.padding(.horizontal, 8)
             }
 
             Divider()
-
-            // Sync to Obsidian button
             Button(action: { appState.syncToObsidian() }) {
-                HStack {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                    Text("Sync to Obsidian")
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+                HStack { Image(systemName: "arrow.triangle.2.circlepath"); Text("Sync Obsidian") }
+                    .font(.caption).foregroundColor(.secondary)
+            }.buttonStyle(.plain).padding(.horizontal, 12).padding(.vertical, 8)
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
-}
-
-struct SidebarDateRow: View {
-    let date: String
-    let isSelected: Bool
-
-    var body: some View {
-        HStack {
-            Text(formatDate(date))
-                .font(.callout)
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        .cornerRadius(6)
-    }
 
     func formatDate(_ d: String) -> String {
-        let today = ISO8601DateFormatter().string(from: Date()).prefix(10)
-        if d == String(today) { return "Today" }
-
-        let yesterday = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-86400)).prefix(10)
-        if d == String(yesterday) { return "Yesterday" }
-
-        // Show like "Apr 1"
-        let parts = d.split(separator: "-")
-        if parts.count == 3 {
-            let months = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-            let m = Int(parts[1]) ?? 0
-            let day = Int(parts[2]) ?? 0
-            if m > 0 && m < 13 { return "\(months[m]) \(day)" }
+        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        if d == today { return "Today" }
+        let y = String(ISO8601DateFormatter().string(from: Date().addingTimeInterval(-86400)).prefix(10))
+        if d == y { return "Yesterday" }
+        let p = d.split(separator: "-")
+        if p.count == 3 {
+            let m = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+            let mi = Int(p[1]) ?? 0
+            if mi > 0, mi < 13 { return "\(m[mi]) \(Int(p[2]) ?? 0)" }
         }
         return d
     }
 }
 
-// MARK: - Chat Timeline
+// MARK: - Chat Area (WeChat/WhatsApp style)
 
-struct ChatTimeline: View {
+struct ChatArea: View {
     @EnvironmentObject var appState: AppState
-
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 if appState.messages.isEmpty && !appState.isRecording {
                     VStack(spacing: 12) {
-                        Spacer(minLength: 80)
-                        Image(systemName: "waveform")
-                            .font(.system(size: 40))
-                            .foregroundColor(.secondary.opacity(0.3))
-                        Text("No recordings yet")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                        Text("Click the mic to start")
-                            .font(.caption)
-                            .foregroundColor(.secondary.opacity(0.6))
-                    }
-                    .frame(maxWidth: .infinity)
+                        Spacer(minLength: 100)
+                        Image(systemName: "waveform").font(.system(size: 40)).foregroundColor(.secondary.opacity(0.2))
+                        Text("Your mouth has a save button").font(.callout).foregroundColor(.secondary.opacity(0.5))
+                    }.frame(maxWidth: .infinity)
                 } else {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                    LazyVStack(spacing: 6) {
                         ForEach(appState.messages) { msg in
-                            MessageRow(message: msg)
-                                .id(msg.id)
+                            ChatBubble(message: msg).id(msg.id)
                         }
-
                         if appState.isRecording {
-                            HStack(spacing: 8) {
-                                PulsingDot()
-                                Text("Listening...")
-                                    .font(.callout)
-                                    .foregroundColor(.red.opacity(0.8))
-                            }
-                            .padding(.horizontal, 16)
-                            .id("listening")
+                            HStack { Spacer(); ListeningIndicator() }.padding(.horizontal, 16).id("listening")
                         }
-
                         if appState.isProcessing {
-                            HStack(spacing: 8) {
-                                ProgressView().scaleEffect(0.7)
-                                Text("Transcribing...")
-                                    .font(.callout)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 16)
-                            .id("processing")
+                            HStack { Spacer(); ProcessingIndicator() }.padding(.horizontal, 16).id("processing")
                         }
-                    }
-                    .padding(.vertical, 8)
+                    }.padding(.vertical, 8)
                 }
             }
             .onChange(of: appState.messages.count) {
                 withAnimation { proxy.scrollTo(appState.messages.last?.id, anchor: .bottom) }
             }
             .onChange(of: appState.isRecording) {
-                if appState.isRecording {
-                    withAnimation { proxy.scrollTo("listening", anchor: .bottom) }
-                }
+                if appState.isRecording { withAnimation { proxy.scrollTo("listening", anchor: .bottom) } }
             }
         }
     }
 }
 
-struct MessageRow: View {
+// MARK: - Chat Bubble (right = me, left = other)
+
+struct ChatBubble: View {
     let message: VoxMessage
     @State private var isHovered = false
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ZStack(alignment: .topTrailing) {
-                Text(message.text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .padding(.trailing, isHovered ? 28 : 0)
-                    .background(Color.accentColor.opacity(isHovered ? 0.12 : 0.06))
-                    .cornerRadius(12)
+        HStack(alignment: .top, spacing: 8) {
+            if message.role == .me { Spacer(minLength: 60) }
 
-                // Copy button (appears on hover)
-                if isHovered {
-                    Button(action: {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(message.text, forType: .string)
-                        copied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
-                    }) {
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.caption)
-                            .foregroundColor(copied ? .green : .secondary)
-                            .padding(6)
-                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.8))
-                            .cornerRadius(6)
+            VStack(alignment: message.role == .me ? .trailing : .leading, spacing: 3) {
+                ZStack(alignment: message.role == .me ? .topTrailing : .topLeading) {
+                    Text(message.text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(message.role == .me ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.08))
+                        .cornerRadius(16)
+                        .cornerRadius(message.role == .me ? 16 : 16)
+
+                    if isHovered {
+                        Button(action: { copyText() }) {
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .font(.caption2)
+                                .foregroundColor(copied ? .green : .secondary)
+                                .padding(4)
+                                .background(.ultraThinMaterial)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(4)
                     }
-                    .buttonStyle(.plain)
-                    .padding(6)
-                    .transition(.opacity)
                 }
-            }
-            .onHover { isHovered = $0 }
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
+                .onHover { isHovered = $0 }
 
-            HStack(spacing: 6) {
-                Text(message.time)
-                if message.latencyMs > 0 { Text("· \(message.latencyMs)ms") }
-                if !message.targetApp.isEmpty { Text("· \(message.targetApp)") }
+                HStack(spacing: 4) {
+                    if message.role == .other {
+                        Image(systemName: "person.fill").font(.system(size: 8))
+                    }
+                    Text(message.time)
+                    if message.latencyMs > 0 { Text("· \(message.latencyMs)ms") }
+                    if message.role == .me {
+                        Image(systemName: "mic.fill").font(.system(size: 8))
+                    }
+                }
+                .font(.caption2)
+                .foregroundColor(.secondary.opacity(0.5))
             }
-            .font(.caption2)
-            .foregroundColor(.secondary.opacity(0.6))
-            .padding(.horizontal, 12)
+
+            if message.role == .other { Spacer(minLength: 60) }
         }
         .padding(.horizontal, 12)
     }
+
+    func copyText() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message.text, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
 }
 
-// MARK: - Input Bar
+// MARK: - Listening Indicator
+
+struct ListeningIndicator: View {
+    @State private var pulse = false
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(.red).frame(width: 10, height: 10)
+                .scaleEffect(pulse ? 1.3 : 1.0)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulse)
+                .onAppear { pulse = true }
+            Text("Listening...").font(.callout).foregroundColor(.red.opacity(0.8))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color.red.opacity(0.08))
+        .cornerRadius(16)
+    }
+}
+
+struct ProcessingIndicator: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().scaleEffect(0.6)
+            Text("Transcribing...").font(.callout).foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color.primary.opacity(0.05))
+        .cornerRadius(16)
+    }
+}
+
+// MARK: - Input Bar (ChatGPT style)
 
 struct InputBar: View {
     @EnvironmentObject var appState: AppState
     @State private var textInput = ""
-    @FocusState private var isTextFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             if let error = appState.lastError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
+                Text(error).font(.caption).foregroundColor(.red)
+                    .padding(.horizontal, 16).padding(.top, 4)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                // Text input (for pasting AI responses)
-                TextField("Paste text to save...", text: $textInput, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.body)
-                    .lineLimit(1...5)
-                    .padding(8)
-                    .background(Color.primary.opacity(0.05))
-                    .cornerRadius(8)
-                    .focused($isTextFocused)
-                    .onSubmit {
-                        if !textInput.isEmpty { saveText() }
-                    }
-
-                VStack(spacing: 6) {
-                    // Mic button (voice recording)
-                    Button(action: {
-                        if appState.isRecording {
-                            Task { await appState.stopAndProcess() }
-                        } else {
-                            appState.startRecording()
-                        }
-                    }) {
-                        Image(systemName: appState.isRecording ? "stop.circle.fill" : "mic.circle.fill")
+            // Recording mode: show cancel + send controls
+            if appState.isRecording {
+                HStack(spacing: 20) {
+                    // Cancel (X)
+                    Button(action: { appState.cancelRecording() }) {
+                        Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 28))
-                            .foregroundColor(appState.isRecording ? .red : .accentColor)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(appState.isProcessing)
-                    .help(appState.isRecording ? "Stop recording" : "Record voice")
+                            .foregroundColor(.secondary)
+                    }.buttonStyle(.plain).help("Cancel recording")
 
-                    // Save button (paste text to archive)
-                    Button(action: { saveText() }) {
-                        Image(systemName: "square.and.arrow.down.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(textInput.isEmpty ? .secondary.opacity(0.3) : .orange)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(textInput.isEmpty || appState.isProcessing)
-                    .help("Save pasted text")
+                    Spacer()
+
+                    ListeningIndicator()
+
+                    Spacer()
+
+                    // Send (arrow up)
+                    Button(action: { Task { await appState.stopAndProcess() } }) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.green)
+                    }.buttonStyle(.plain).help("Transcribe and save")
                 }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+            } else {
+                // Normal mode: text input + mic + save
+                HStack(alignment: .bottom, spacing: 8) {
+                    // Text field for pasting
+                    TextField("Paste AI response here...", text: $textInput, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .lineLimit(1...5)
+                        .padding(8)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(10)
+
+                    if textInput.isEmpty {
+                        // Mic button (start recording)
+                        Button(action: { appState.startRecording() }) {
+                            Image(systemName: "mic.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(appState.isProcessing)
+                        .help("Record voice")
+                    } else {
+                        // Save button (paste text as "other" role)
+                        Button(action: { saveOtherText() }) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.orange)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(appState.isProcessing)
+                        .help("Save as AI response")
+                    }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
     }
 
-    private func saveText() {
+    func saveOtherText() {
         guard !textInput.isEmpty else { return }
-        Task {
-            await appState.saveText(textInput)
-            textInput = ""
-        }
+        Task { await appState.saveText(textInput, role: .other) }
+        textInput = ""
     }
-}
-
-// MARK: - Pulsing Dot
-
-struct PulsingDot: View {
-    @State private var on = false
-    var body: some View {
-        Circle().fill(.red).frame(width: 8, height: 8).opacity(on ? 1 : 0.3)
-            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: on)
-            .onAppear { on = true }
-    }
-}
-
-// MARK: - Message Model
-
-struct VoxMessage: Identifiable {
-    let id = UUID()
-    let text: String
-    let time: String
-    let latencyMs: Int
-    let targetApp: String
 }
 
 // MARK: - App State
@@ -411,8 +368,7 @@ class AppState: ObservableObject {
     var selectedDateLabel: String {
         if selectedDate.isEmpty { return "Today" }
         let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        if selectedDate == today { return "Today" }
-        return selectedDate
+        return selectedDate == today ? "Today" : selectedDate
     }
 
     private let processManager = ProcessManager()
@@ -422,10 +378,11 @@ class AppState: ObservableObject {
     private let sampleRate: Double = 16000
     private let token = "voxlog-dev-token"
 
+    // MARK: - Lifecycle
+
     func start() async {
         do {
-            try await processManager.startServer()
-            serverRunning = true
+            try await processManager.startServer(); serverRunning = true
             for _ in 0..<15 {
                 if let url = URL(string: "http://127.0.0.1:7890/health"),
                    let (_, r) = try? await URLSession.shared.data(from: url),
@@ -436,7 +393,6 @@ class AppState: ObservableObject {
 
         await detectEnv()
         await loadAvailableDates()
-
         let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
         selectedDate = today
         await loadMessages(for: today)
@@ -447,6 +403,14 @@ class AppState: ObservableObject {
             hotkeyManager.register()
         }
     }
+
+    func stop() {
+        hotkeyManager.unregister()
+        if let e = audioEngine { e.inputNode.removeTap(onBus: 0); e.stop() }
+        processManager.stopServer()
+    }
+
+    // MARK: - Network
 
     func detectEnv() async {
         guard let url = URL(string: "http://127.0.0.1:7890/v1/detect") else { return }
@@ -459,19 +423,16 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - History
+
     func loadAvailableDates() async {
-        // Get dates that have recordings
-        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?limit=200") else { return }
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?limit=500") else { return }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: req),
            let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             var dates = Set<String>()
-            for item in items {
-                if let ts = item["created_at"] as? String {
-                    dates.insert(String(ts.prefix(10)))
-                }
-            }
+            for item in items { if let ts = item["created_at"] as? String { dates.insert(String(ts.prefix(10))) } }
             availableDates = dates.sorted().reversed()
         }
     }
@@ -482,7 +443,7 @@ class AppState: ObservableObject {
     }
 
     func loadMessages(for date: String) async {
-        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?date=\(date)&limit=200") else { return }
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?date=\(date)&limit=500") else { return }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: req),
@@ -490,30 +451,19 @@ class AppState: ObservableObject {
             messages = items.compactMap { item in
                 guard let text = item["polished_text"] as? String, !text.isEmpty,
                       let ts = item["created_at"] as? String else { return nil }
+                let app = item["target_app"] as? String ?? ""
+                // Determine role: paste = other, everything else = me
+                let role: MessageRole = app.contains("paste") ? .other : .me
                 return VoxMessage(
-                    text: text,
-                    time: String(ts.dropFirst(11).prefix(5)),
-                    latencyMs: item["latency_ms"] as? Int ?? 0,
-                    targetApp: item["target_app"] as? String ?? ""
+                    text: text, time: String(ts.dropFirst(11).prefix(5)),
+                    role: role, latencyMs: item["latency_ms"] as? Int ?? 0
                 )
             }
             totalRecordings = messages.count
         }
     }
 
-    func syncToObsidian() {
-        // Trigger export via server
-        Task {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            let voxlogRoot = ProcessInfo.processInfo.environment["VOXLOG_ROOT"] ?? NSHomeDirectory() + "/voxlog"
-            let python = voxlogRoot + "/.venv/bin/python"
-            process.arguments = [python, voxlogRoot + "/export_cron.py"]
-            process.currentDirectoryURL = URL(fileURLWithPath: voxlogRoot)
-            try? process.run()
-            process.waitUntilExit()
-        }
-    }
+    // MARK: - Recording
 
     func startRecording() {
         guard !isRecording, !isProcessing else { return }
@@ -534,14 +484,18 @@ class AppState: ObservableObject {
             var err: NSError?
             converter.convert(to: conv, error: &err) { _, s in s.pointee = .haveData; return buffer }
             if let ch = conv.int16ChannelData {
-                let d = Data(bytes: ch[0], count: Int(conv.frameLength) * 2)
-                DispatchQueue.main.async { self.audioData.append(d) }
+                DispatchQueue.main.async { self.audioData.append(Data(bytes: ch[0], count: Int(conv.frameLength) * 2)) }
             }
         }
 
-        do {
-            try engine.start(); audioEngine = engine; isRecording = true; lastError = nil
-        } catch { lastError = "Mic: \(error.localizedDescription)" }
+        do { try engine.start(); audioEngine = engine; isRecording = true; lastError = nil }
+        catch { lastError = "Mic: \(error.localizedDescription)" }
+    }
+
+    func cancelRecording() {
+        guard isRecording, let engine = audioEngine else { return }
+        engine.inputNode.removeTap(onBus: 0); engine.stop()
+        audioEngine = nil; isRecording = false; audioData = Data()
     }
 
     func stopAndProcess() async {
@@ -561,7 +515,7 @@ class AppState: ObservableObject {
             var body = Data()
             body.append("--\(b)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"r.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
             body.append(wav); body.append("\r\n".data(using: .utf8)!)
-            for (k, v) in [("source","app"),("env","auto"),("target_app",NSWorkspace.shared.frontmostApplication?.localizedName ?? "")] {
+            for (k, v) in [("source","voice"),("env","auto"),("target_app","voice")] {
                 body.append("--\(b)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!)
             }
             body.append("--\(b)--\r\n".data(using: .utf8)!)
@@ -575,49 +529,50 @@ class AppState: ObservableObject {
             if !text.isEmpty {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
-
-                let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
-                messages.append(VoxMessage(text: text, time: fmt.string(from: Date()), latencyMs: latency, targetApp: ""))
-                totalRecordings += 1; lastError = nil
-
-                // Refresh sidebar dates
-                if !availableDates.contains(selectedDate) {
-                    availableDates.insert(selectedDate, at: 0)
-                }
+                appendMessage(text: text, role: .me, latency: latency)
             }
         } catch { lastError = "\(error.localizedDescription)" }
-
         isProcessing = false
     }
 
-    func saveText(_ text: String) async {
-        // Save pasted text directly to archive (no ASR, no LLM)
+    // MARK: - Save Text (paste AI response)
+
+    func saveText(_ text: String, role: MessageRole = .other) async {
         isProcessing = true
         do {
             let url = URL(string: "http://127.0.0.1:7890/v1/save")!
             var req = URLRequest(url: url); req.httpMethod = "POST"
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            req.httpBody = "text=\(encoded)&source=paste&target_app=paste".data(using: .utf8)
 
-            let app = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
-            let body = "text=\(text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&source=paste&target_app=\(app)"
-            req.httpBody = body.data(using: .utf8)
-
-            let (data, _) = try await URLSession.shared.data(for: req)
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-            let saved = json["polished_text"] as? String ?? text
-
-            let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
-            messages.append(VoxMessage(text: saved, time: fmt.string(from: Date()), latencyMs: 0, targetApp: "📋 paste"))
-            totalRecordings += 1; lastError = nil
+            let (_, _) = try await URLSession.shared.data(for: req)
+            appendMessage(text: text, role: role, latency: 0)
         } catch { lastError = "\(error.localizedDescription)" }
         isProcessing = false
     }
 
-    func stop() {
-        hotkeyManager.unregister()
-        if let e = audioEngine { e.inputNode.removeTap(onBus: 0); e.stop() }
-        processManager.stopServer()
+    // MARK: - Obsidian Sync
+
+    func syncToObsidian() {
+        Task {
+            let p = Process()
+            let root = ProcessInfo.processInfo.environment["VOXLOG_ROOT"] ?? NSHomeDirectory() + "/voxlog"
+            p.executableURL = URL(fileURLWithPath: root + "/.venv/bin/python")
+            p.arguments = [root + "/export_cron.py"]
+            p.currentDirectoryURL = URL(fileURLWithPath: root)
+            try? p.run(); p.waitUntilExit()
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func appendMessage(text: String, role: MessageRole, latency: Int) {
+        let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        messages.append(VoxMessage(text: text, time: fmt.string(from: Date()), role: role, latencyMs: latency))
+        totalRecordings += 1; lastError = nil
+        if !availableDates.contains(selectedDate) { availableDates.insert(selectedDate, at: 0) }
     }
 
     private func makeWav(from pcm: Data) -> Data {

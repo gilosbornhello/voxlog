@@ -104,6 +104,8 @@ struct MainLayout: View {
     @State private var showPreview = false
     @State private var previewPath = ""
 
+    private let previewWidth: CGFloat = 320
+
     var body: some View {
         HStack(spacing: 0) {
             // Left sidebar: Agents
@@ -112,11 +114,11 @@ struct MainLayout: View {
                 Divider()
             }
 
-            // Center: Chat
+            // Center: Chat (fixed min width, never compressed)
             VStack(spacing: 0) {
                 // Toolbar
                 HStack {
-                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() } }) {
+                    Button(action: { toggleLeftSidebar() }) {
                         Image(systemName: "sidebar.left").foregroundColor(.secondary)
                     }.buttonStyle(.plain)
 
@@ -130,7 +132,7 @@ struct MainLayout: View {
                     Circle().fill(appState.serverRunning ? .green : .red).frame(width: 6, height: 6)
                     Text(appState.envLabel).font(.caption).foregroundColor(.secondary)
 
-                    Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showPreview.toggle() } }) {
+                    Button(action: { togglePreview() }) {
                         Image(systemName: "sidebar.right").foregroundColor(showPreview ? .accentColor : .secondary)
                     }.buttonStyle(.plain)
                 }
@@ -138,28 +140,48 @@ struct MainLayout: View {
 
                 Divider()
 
-                // Chat area (passes file tap handler)
                 ChatArea(onFileTap: { path in
                     previewPath = path
-                    withAnimation(.easeInOut(duration: 0.2)) { showPreview = true }
+                    togglePreview(forceOpen: true)
                 }).environmentObject(appState)
 
                 Divider()
 
-                // Input bar
                 InputBar().environmentObject(appState)
             }
+            .frame(minWidth: 380)
 
             // Right sidebar: Markdown preview
             if showPreview {
                 Divider()
-                MarkdownPreview(filePath: previewPath, onClose: {
-                    withAnimation(.easeInOut(duration: 0.2)) { showPreview = false }
-                })
-                .frame(width: 300)
-                .transition(.move(edge: .trailing))
+                MarkdownPreview(filePath: previewPath, onClose: { togglePreview() })
+                    .frame(width: previewWidth)
+                    .transition(.move(edge: .trailing))
             }
         }
+    }
+
+    func toggleLeftSidebar() {
+        withAnimation(.easeInOut(duration: 0.2)) { showSidebar.toggle() }
+    }
+
+    func togglePreview(forceOpen: Bool = false) {
+        let willShow = forceOpen || !showPreview
+
+        // Expand/shrink window width so chat area stays the same size
+        if let window = NSApp.mainWindow {
+            var frame = window.frame
+            if willShow && !showPreview {
+                // Opening: expand window to the right
+                frame.size.width += previewWidth
+            } else if !willShow && showPreview {
+                // Closing: shrink window from the right
+                frame.size.width -= previewWidth
+            }
+            window.setFrame(frame, display: true, animate: true)
+        }
+
+        withAnimation(.easeInOut(duration: 0.2)) { showPreview = willShow }
     }
 }
 

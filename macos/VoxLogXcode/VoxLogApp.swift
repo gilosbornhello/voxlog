@@ -576,17 +576,26 @@ struct InputBar: View {
                         .background(Color.primary.opacity(0.04))
                         .cornerRadius(10)
 
-                    // Model/agent selector (left of mic)
+                    // ASR model selector (left of mic)
                     Menu {
-                        ForEach(appState.agents.filter { $0.parent.isEmpty }, id: \.id) { agent in
-                            Button(agent.emoji + " " + agent.name) { appState.selectAgent(agent.id) }
-                        }
+                        Text("Speech Recognition").font(.caption)
+                        Button("🇺🇸 Qwen ASR (US) — qwen3-asr-flash-us") { appState.switchASR("qwen-us") }
+                        Button("🇨🇳 Qwen ASR (CN) — qwen3-asr-flash") { appState.switchASR("qwen-cn") }
+                        Button("🌐 OpenAI Whisper — whisper-1") { appState.switchASR("openai") }
+                        Button("🇨🇳 SiliconFlow — SenseVoiceSmall") { appState.switchASR("siliconflow") }
+                        Divider()
+                        Text("Current: \(appState.currentASRLabel)").font(.caption)
                     } label: {
-                        Image(systemName: "cpu").font(.system(size: 18)).foregroundColor(.secondary)
+                        Text(appState.currentASRShort)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 4).padding(.vertical, 2)
+                            .background(Color.primary.opacity(0.05))
+                            .cornerRadius(4)
                     }
                     .menuStyle(.borderlessButton)
-                    .frame(width: 24)
-                    .help("Switch agent")
+                    .frame(minWidth: 40)
+                    .help("Switch ASR model")
 
                     // Mic or Send (right)
                     if pasteText.isEmpty && attachedFiles.isEmpty {
@@ -669,6 +678,8 @@ class AppState: ObservableObject {
     @Published var agents: [AgentInfo] = DEFAULT_AGENTS
     @Published var selectedAgent: String = "claude-code"
     @Published var totalRecordings = 0
+    @Published var currentASRLabel = "Qwen ASR (US)"
+    @Published var currentASRShort = "Qwen US"
     var previewFile: ((String) -> Void)?
 
     var selectedDateLabel: String {
@@ -899,6 +910,22 @@ class AppState: ObservableObject {
             appendMessage(text: text, role: role, latency: 0)
         } catch { lastError = "\(error.localizedDescription)" }
         isProcessing = false
+    }
+
+    // MARK: - ASR Model Switch
+
+    func switchASR(_ model: String) {
+        let labels: [String: (String, String)] = [
+            "qwen-us": ("Qwen ASR (US) — qwen3-asr-flash-us", "Qwen US"),
+            "qwen-cn": ("Qwen ASR (CN) — qwen3-asr-flash", "Qwen CN"),
+            "openai": ("OpenAI Whisper — whisper-1", "Whisper"),
+            "siliconflow": ("SiliconFlow — SenseVoiceSmall", "SenseVoice"),
+        ]
+        if let (full, short) = labels[model] {
+            currentASRLabel = full
+            currentASRShort = short
+        }
+        // TODO: send to server to actually switch the ASR provider at runtime
     }
 
     // MARK: - Obsidian Sync

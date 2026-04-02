@@ -13,10 +13,13 @@ from __future__ import annotations
 import time
 from contextlib import asynccontextmanager
 
+import json
 import structlog
 import uvicorn
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from core.archive import Archive
 from core.asr_router import ASRError, transcribe
@@ -60,6 +63,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="VoxLog", version="0.1.0", lifespan=lifespan)
+
+# Serve Web UI
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir), html=True), name="static")
+
+from fastapi.responses import RedirectResponse
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/static/index.html")
 
 
 def verify_token(authorization: str | None = Header(None)) -> None:
@@ -257,6 +271,50 @@ async def switch_env_endpoint(
         "llm_main": _config.route.llm.main.value,
         "llm_fallback": _config.route.llm.fallback.value,
     }}
+
+
+@app.get("/v1/dictionary")
+async def get_dictionary(_auth: None = Depends(verify_token)) -> dict:
+    assert _config
+    terms_path = _config.terms_path
+    if terms_path.exists():
+        return json.loads(terms_path.read_text(encoding="utf-8"))
+    return {"corrections": {}, "preserve": [], "format_rules": {}}
+
+
+@app.post("/v1/dictionary")
+async def update_dictionary(request: Request, _auth: None = Depends(verify_token)) -> dict:
+    assert _config and _dictionary
+    body = await request.json()
+    action = body.get("action")
+    terms_path = _config.terms_path
+
+    # Load current
+    if terms_path.exists():
+        data = json.loads(terms_path.read_text(encoding="utf-8"))
+    else:
+        data = {"version": 1, "corrections": {}, "preserve": [], "format_rules": {"cn_en_space": True, "punctuation": "zh-CN"}}
+
+    if action == "add":
+        wrong = body.get("wrong", "").strip()
+        right = body.get("right", "").strip()
+        if wrong and right:
+            data["corrections"][wrong] = right
+            if right not in data.get("preserve", []):
+                data.setdefault("preserve", []).append(right)
+
+    elif action == "delete":
+        wrong = body.get("wrong", "").strip()
+        data["corrections"].pop(wrong, None)
+
+    # Save
+    terms_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # Reload dictionary in memory
+    _dictionary.__init__(terms_path)
+
+    logger.info("dictionary.updated", action=action, corrections=len(data["corrections"]))
+    return data
 
 
 def main():

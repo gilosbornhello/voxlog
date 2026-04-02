@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VoxLog API Reference</title>
+<style>
+:root { --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system,system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+.container { max-width:800px; margin:0 auto; padding:20px; }
+h1 { font-size:24px; margin-bottom:8px; }
+h1 span { color:var(--accent); }
+.subtitle { color:var(--text2); margin-bottom:32px; }
+.endpoint { background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:16px; overflow:hidden; }
+.endpoint-header { padding:12px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; }
+.method { font-size:12px; font-weight:700; padding:2px 8px; border-radius:4px; font-family:monospace; }
+.method.get { background:rgba(88,166,255,0.15); color:var(--accent); }
+.method.post { background:rgba(63,185,80,0.15); color:var(--green); }
+.path { font-family:monospace; font-size:14px; }
+.desc { color:var(--text2); font-size:13px; margin-left:auto; }
+.endpoint-body { padding:0 16px 16px; display:none; }
+.endpoint.open .endpoint-body { display:block; }
+pre { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:12px; font-size:13px; overflow-x:auto; margin:8px 0; }
+code { font-family:'SF Mono',monospace; }
+.param { display:flex; gap:8px; padding:4px 0; font-size:13px; }
+.param-name { font-family:monospace; color:var(--accent); min-width:100px; }
+.param-type { color:var(--yellow); min-width:60px; }
+.back { color:var(--accent); text-decoration:none; font-size:14px; display:inline-block; margin-bottom:16px; }
+</style>
+</head>
+<body>
+<div class="container">
+<a class="back" href="/">← Back to VoxLog</a>
+<h1><span>Vox</span>Log API</h1>
+<p class="subtitle">All endpoints require <code>Authorization: Bearer {token}</code> header (except /health).</p>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method post">POST</span><span class="path">/v1/voice</span><span class="desc">ASR + dictionary + LLM polish + archive</span></div>
+  <div class="endpoint-body">
+    <p>The main endpoint. Send audio, get polished text back. Simultaneously archives to SQLite.</p>
+    <strong>Request:</strong> <code>multipart/form-data</code>
+    <div class="param"><span class="param-name">audio</span><span class="param-type">file</span>WAV 16kHz mono, max 60s</div>
+    <div class="param"><span class="param-name">source</span><span class="param-type">string</span>macos | web | python_client</div>
+    <div class="param"><span class="param-name">env</span><span class="param-type">string</span>home | office</div>
+    <div class="param"><span class="param-name">target_app</span><span class="param-type">string</span>Current foreground app name</div>
+    <strong>Response:</strong>
+    <pre><code>{
+  "id": "uuid",
+  "raw_text": "...",
+  "polished_text": "...",
+  "asr_provider": "qwen",
+  "llm_provider": "openai_gpt",
+  "polished": true,
+  "duration_seconds": 3.5,
+  "latency_ms": 1800,
+  "target_app": "Claude Code",
+  "env": "home",
+  "created_at": "2026-04-01T10:00:00Z"
+}</code></pre>
+    <strong>Errors:</strong> 401 (auth), 413 (too long), 422 (bad format), 502 (ASR failed)
+    <pre><code>curl -X POST http://localhost:7890/v1/voice \
+  -H "Authorization: Bearer token" \
+  -F "audio=@recording.wav" \
+  -F "source=macos" -F "env=home"</code></pre>
+  </div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method post">POST</span><span class="path">/v1/transcribe</span><span class="desc">ASR only, no polish</span></div>
+  <div class="endpoint-body">
+    <p>Transcribe audio without LLM polish or archiving. Useful for debugging ASR quality.</p>
+    <div class="param"><span class="param-name">audio</span><span class="param-type">file</span>WAV 16kHz mono</div>
+    <div class="param"><span class="param-name">env</span><span class="param-type">string</span>home | office</div>
+  </div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method post">POST</span><span class="path">/v1/polish</span><span class="desc">LLM polish only, text in/out</span></div>
+  <div class="endpoint-body">
+    <p>Apply dictionary corrections + LLM polish to text. No audio, no archive.</p>
+    <div class="param"><span class="param-name">text</span><span class="param-type">string</span>Raw text to polish</div>
+    <div class="param"><span class="param-name">env</span><span class="param-type">string</span>home | office</div>
+    <pre><code>curl -X POST http://localhost:7890/v1/polish \
+  -H "Authorization: Bearer token" \
+  -d "text=嗯那个把首页pricing放到hero下面&env=home"</code></pre>
+  </div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/history</span><span class="desc">Search and list voice history</span></div>
+  <div class="endpoint-body">
+    <div class="param"><span class="param-name">q</span><span class="param-type">string</span>Search query (optional)</div>
+    <div class="param"><span class="param-name">date</span><span class="param-type">string</span>YYYY-MM-DD (optional, defaults to today)</div>
+    <div class="param"><span class="param-name">limit</span><span class="param-type">int</span>Max results (default 50, max 200)</div>
+  </div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/history/export</span><span class="desc">Markdown export for Obsidian</span></div>
+  <div class="endpoint-body"><div class="param"><span class="param-name">date</span><span class="param-type">string</span>YYYY-MM-DD (required)</div></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/history/export/json</span><span class="desc">JSON export</span></div>
+  <div class="endpoint-body"><div class="param"><span class="param-name">date</span><span class="param-type">string</span>YYYY-MM-DD</div></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/history/export/csv</span><span class="desc">CSV export</span></div>
+  <div class="endpoint-body"><div class="param"><span class="param-name">date</span><span class="param-type">string</span>YYYY-MM-DD</div></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/history/export/weekly</span><span class="desc">Weekly Markdown summary</span></div>
+  <div class="endpoint-body"><div class="param"><span class="param-name">end_date</span><span class="param-type">string</span>YYYY-MM-DD (defaults to today)</div></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/summary</span><span class="desc">AI-generated daily summary</span></div>
+  <div class="endpoint-body">
+    <p>Uses LLM to summarize the day's voice inputs into topics, decisions, and action items.</p>
+    <div class="param"><span class="param-name">date</span><span class="param-type">string</span>YYYY-MM-DD (defaults to today)</div>
+  </div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/stats</span><span class="desc">Usage statistics + cost estimate</span></div>
+  <div class="endpoint-body"><p>Returns recording count, duration, provider breakdown, avg latency, estimated monthly cost.</p></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method post">POST</span><span class="path">/v1/env</span><span class="desc">Switch network environment</span></div>
+  <div class="endpoint-body"><div class="param"><span class="param-name">env</span><span class="param-type">string</span>home | office</div></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/v1/dictionary</span><span class="desc">Get dictionary terms</span></div>
+  <div class="endpoint-body"><p>Returns the full terms.json content.</p></div>
+</div>
+
+<div class="endpoint" onclick="this.classList.toggle('open')">
+  <div class="endpoint-header"><span class="method post">POST</span><span class="path">/v1/dictionary</span><span class="desc">Add/delete dictionary terms</span></div>
+  <div class="endpoint-body">
+    <pre><code>// Add
+{"action": "add", "wrong": "cloud code", "right": "Claude Code"}
+// Delete
+{"action": "delete", "wrong": "cloud code"}</code></pre>
+  </div>
+</div>
+
+<div class="endpoint">
+  <div class="endpoint-header"><span class="method get">GET</span><span class="path">/health</span><span class="desc">Health check (no auth)</span></div>
+</div>
+
+</div>
+</body>
+</html>

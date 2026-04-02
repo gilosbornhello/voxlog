@@ -71,6 +71,11 @@ struct MainLayout: View {
 
                     Text(appState.selectedDateLabel).font(.headline)
                     Spacer()
+                    if !appState.modelLabel.isEmpty {
+                        Text(appState.modelLabel)
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
                     Circle().fill(appState.serverRunning ? .green : .red).frame(width: 6, height: 6)
                     Text(appState.envLabel).font(.caption).foregroundColor(.secondary)
                 }
@@ -352,6 +357,7 @@ class AppState: ObservableObject {
     @Published var lastError: String?
     @Published var serverRunning = false
     @Published var envLabel = ""
+    @Published var modelLabel = ""
     @Published var availableDates: [String] = []
     @Published var selectedDate: String = ""
     @Published var totalRecordings = 0
@@ -409,8 +415,12 @@ class AppState: ObservableObject {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: req),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let env = json["env"] as? String {
+           let env = json["env"] as? String,
+           let route = json["route"] as? [String: Any] {
             envLabel = env == "home" ? "Home" : "Office"
+            let asr = (route["asr_main"] as? String ?? "").replacingOccurrences(of: "_", with: " ")
+            let llm = (route["llm_main"] as? String ?? "").replacingOccurrences(of: "_", with: " ")
+            modelLabel = "\(asr) · \(llm)"
         }
     }
 

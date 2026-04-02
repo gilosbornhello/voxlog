@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build a self-contained VoxLog.app that bundles Python + server inside
-# No terminal needed — double click to run
+# Build self-contained VoxLog.app — zero external dependencies
+# Uses PyInstaller binary (no Python needed on target machine)
 set -e
 
 VOXLOG_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -10,95 +10,93 @@ APP="$VOXLOG_ROOT/dist/VoxLog.app"
 CONTENTS="$APP/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-PYTHON_BUNDLE="$RESOURCES/python-env"
 
-echo "=== Building self-contained VoxLog.app ==="
+echo "=== Building VoxLog.app (zero-dependency) ==="
 
-# Clean
 rm -rf "$APP"
 mkdir -p "$MACOS_DIR" "$RESOURCES"
 
-# Step 1: Build Swift binary
-echo "[1/5] Building Swift..."
+# Step 1: Build Swift UI
+echo "[1/4] Building Swift UI..."
 cd macos/VoxLogXcode
 swift build -c release 2>&1 | grep -E "error|Build complete"
 BIN=$(swift build -c release --show-bin-path 2>/dev/null)/VoxLog
 cp "$BIN" "$MACOS_DIR/VoxLog-ui"
 cd "$VOXLOG_ROOT"
 
-# Step 2: Bundle Python venv (stripped down)
-echo "[2/5] Bundling Python environment..."
-if [ ! -d .venv ]; then
-    echo "ERROR: .venv not found. Run: python3 -m venv .venv && pip install -e ."
-    exit 1
+# Step 2: Build Python server binary (PyInstaller)
+echo "[2/4] Building server binary..."
+if [ ! -f dist/voxlog-server ]; then
+    source .venv/bin/activate
+    pyinstaller --onefile --name voxlog-server \
+        --hidden-import uvicorn.logging \
+        --hidden-import uvicorn.protocols.http \
+        --hidden-import uvicorn.protocols.http.auto \
+        --hidden-import uvicorn.protocols.http.h11_impl \
+        --hidden-import uvicorn.protocols.websockets \
+        --hidden-import uvicorn.protocols.websockets.auto \
+        --hidden-import uvicorn.lifespan \
+        --hidden-import uvicorn.lifespan.on \
+        --hidden-import uvicorn.lifespan.off \
+        --hidden-import core --hidden-import core.archive \
+        --hidden-import core.asr_router --hidden-import core.audio \
+        --hidden-import core.config --hidden-import core.dictionary \
+        --hidden-import core.models --hidden-import core.polisher \
+        --hidden-import core.network_detect --hidden-import core.stats \
+        --hidden-import core.summarizer --hidden-import core.exporter \
+        --hidden-import core.obsidian_sync --hidden-import server \
+        --hidden-import server.app \
+        --add-data "core:core" --add-data "server:server" \
+        --add-data "terms.json:." \
+        server_main.py 2>&1 | tail -3
 fi
+cp dist/voxlog-server "$MACOS_DIR/voxlog-server"
 
-# Copy venv but skip unnecessary stuff
-rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='pip*' \
-    --exclude='setuptools*' --exclude='pkg_resources*' --exclude='_distutils_hack*' \
-    .venv/ "$PYTHON_BUNDLE/"
-
-# Step 3: Bundle server code
-echo "[3/5] Bundling server code..."
-mkdir -p "$RESOURCES/voxlog"
-cp -r core/ "$RESOURCES/voxlog/core/"
-cp -r server/ "$RESOURCES/voxlog/server/"
-cp terms.json "$RESOURCES/voxlog/"
-cp pyproject.toml "$RESOURCES/voxlog/"
-
-# Step 4: Create launcher script
-echo "[4/5] Creating launcher..."
+# Step 3: Create launcher
+echo "[3/4] Creating launcher..."
 cat > "$MACOS_DIR/VoxLog" << 'LAUNCHER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
-RESOURCES="$DIR/Resources"
-PYTHON="$RESOURCES/python-env/bin/python3"
-# Fallback if bundled Python doesn't work
-if ! "$PYTHON" --version > /dev/null 2>&1; then
-    PYTHON=$(which python3 2>/dev/null || echo "/opt/homebrew/bin/python3")
-fi
-SERVER_DIR="$RESOURCES/voxlog"
 
-# Ensure ~/.voxlog exists
 mkdir -p "$HOME/.voxlog/logs"
 
-# Copy default terms.json if not exists
-[ ! -f "$HOME/.voxlog/terms.json" ] && cp "$SERVER_DIR/terms.json" "$HOME/.voxlog/terms.json" 2>/dev/null
+# Copy default terms.json
+[ ! -f "$HOME/.voxlog/terms.json" ] && cp "$DIR/Resources/terms.json" "$HOME/.voxlog/terms.json" 2>/dev/null
 
-# Start Python server in background
-export PYTHONPATH="$SERVER_DIR"
-"$PYTHON" -m uvicorn server.app:app --host 127.0.0.1 --port 7890 --log-level info \
-    > "$HOME/.voxlog/logs/server.log" 2>&1 &
+# Create default .env if missing
+[ ! -f "$HOME/.voxlog/.env" ] && cat > "$HOME/.voxlog/.env" << 'ENVEOF'
+DASHSCOPE_API_KEY=
+DASHSCOPE_REGION=us
+OPENAI_API_KEY=
+SILICONFLOW_API_KEY=
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+SILICONFLOW_MODEL=FunAudioLLM/SenseVoiceSmall
+VOXLOG_API_TOKEN=voxlog-dev-token
+VOXLOG_ENV=home
+ENVEOF
+
+# Start server (single binary, no Python needed)
+"$DIR/MacOS/voxlog-server" > "$HOME/.voxlog/logs/server.log" 2>&1 &
 SERVER_PID=$!
 
-# Wait for server
 for i in $(seq 1 15); do
-    if curl -s http://127.0.0.1:7890/health > /dev/null 2>&1; then
-        break
-    fi
+    curl -s http://127.0.0.1:7890/health > /dev/null 2>&1 && break
     sleep 0.5
 done
 
-# Start UI
-export VOXLOG_ROOT="$SERVER_DIR"
+export VOXLOG_ROOT="$DIR/Resources"
 "$DIR/MacOS/VoxLog-ui"
 
-# Cleanup on exit
 kill $SERVER_PID 2>/dev/null
 LAUNCHER
 chmod +x "$MACOS_DIR/VoxLog"
 
-# Step 5: Copy icon + Create Info.plist
-echo "[5/6] Copying app icon..."
-ICON_FILE="$VOXLOG_ROOT/macos/VoxLogXcode/AppIcon.icns"
-if [ -f "$ICON_FILE" ]; then
-    cp "$ICON_FILE" "$RESOURCES/AppIcon.icns"
-    echo "  Icon copied"
-else
-    echo "  WARNING: AppIcon.icns not found"
-fi
+# Copy resources
+cp terms.json "$RESOURCES/"
+[ -f macos/VoxLogXcode/AppIcon.icns ] && cp macos/VoxLogXcode/AppIcon.icns "$RESOURCES/"
 
-echo "[6/6] Creating Info.plist..."
+# Step 4: Info.plist
+echo "[4/4] Creating Info.plist..."
 cat > "$CONTENTS/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -113,28 +111,23 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <key>CFBundleName</key>
     <string>VoxLog</string>
     <key>CFBundleVersion</key>
-    <string>0.2.0</string>
+    <string>0.3.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.0</string>
+    <string>0.3.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>VoxLog needs microphone access to record your voice for transcription.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>VoxLog needs to paste text into your active application.</string>
 </dict>
 </plist>
 PLIST
 
-# Size report
 APP_SIZE=$(du -sh "$APP" | awk '{print $1}')
 echo ""
-echo "=== VoxLog.app built: $APP ($APP_SIZE) ==="
+echo "=== VoxLog.app v0.3.0 built ($APP_SIZE) ==="
+echo "Zero Python dependency. Single binary server inside."
 echo ""
-echo "Install:"
-echo "  cp -r $APP /Applications/"
-echo ""
-echo "Then double-click VoxLog in Applications or Spotlight."
-echo "No terminal needed. Server starts automatically inside the app."
+echo "Install: cp -r $APP /Applications/"
+echo "DMG:     hdiutil create -volname VoxLog -srcfolder /tmp/voxlog-dmg -ov -format UDZO ~/Desktop/VoxLog.dmg"

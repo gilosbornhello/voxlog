@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu(title: "VoxLog")
         appMenu.addItem(withTitle: "Dictionary...", action: #selector(openDictionary), keyEquivalent: "d")
+        appMenu.addItem(withTitle: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Sync to Obsidian", action: #selector(syncObsidian), keyEquivalent: "s")
         appMenu.addItem(NSMenuItem.separator())
@@ -59,6 +60,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         w.center()
         w.makeKeyAndOrderFront(nil)
         dictWindow = w
+    }
+
+    var settingsWindow: NSWindow?
+
+    @objc func openSettings() {
+        if let w = settingsWindow, w.isVisible { w.makeKeyAndOrderFront(nil); return }
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 500),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false
+        )
+        w.title = "VoxLog Settings"
+        w.contentView = NSHostingView(rootView: SettingsEditor())
+        w.center()
+        w.makeKeyAndOrderFront(nil)
+        settingsWindow = w
     }
 
     @objc func syncObsidian() { appState.syncToObsidian() }
@@ -192,12 +209,12 @@ struct SidebarView: View {
                     }.foregroundColor(.secondary)
                 }.buttonStyle(.plain).help("Personal Dictionary (Cmd+D)")
 
-                Button(action: { /* future settings */ }) {
+                Button(action: { openSettings() }) {
                     VStack(spacing: 2) {
                         Image(systemName: "gear").font(.system(size: 14))
                         Text("Settings").font(.caption2)
                     }.foregroundColor(.secondary)
-                }.buttonStyle(.plain).help("Settings")
+                }.buttonStyle(.plain).help("Settings (API keys, models)")
             }
             .padding(.vertical, 8)
         }
@@ -205,8 +222,11 @@ struct SidebarView: View {
     }
 
     func openDictionary() {
-        // Trigger menu action
         NSApp.sendAction(#selector(AppDelegate.openDictionary), to: nil, from: nil)
+    }
+
+    func openSettings() {
+        NSApp.sendAction(#selector(AppDelegate.openSettings), to: nil, from: nil)
     }
 
     var topLevelAgents: [AgentInfo] {

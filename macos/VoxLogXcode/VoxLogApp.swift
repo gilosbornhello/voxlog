@@ -273,6 +273,7 @@ struct ProcessingIndicator: View {
 struct InputBar: View {
     @EnvironmentObject var appState: AppState
     @State private var textInput = ""
+    @State private var textSource: MessageRole = .other  // tracks where the text came from
 
     var body: some View {
         VStack(spacing: 0) {
@@ -281,62 +282,100 @@ struct InputBar: View {
                     .padding(.horizontal, 16).padding(.top, 4)
             }
 
-            // Recording mode: show cancel + send controls
+            // Recording mode
             if appState.isRecording {
                 HStack(spacing: 20) {
-                    // Cancel (X)
                     Button(action: { appState.cancelRecording() }) {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.secondary)
-                    }.buttonStyle(.plain).help("Cancel recording")
+                            .font(.system(size: 28)).foregroundColor(.secondary)
+                    }.buttonStyle(.plain).help("Cancel")
 
                     Spacer()
-
                     ListeningIndicator()
-
                     Spacer()
 
-                    // Send (arrow up)
-                    Button(action: { Task { await appState.stopAndProcess() } }) {
+                    Button(action: { transcribeToInput() }) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.green)
-                    }.buttonStyle(.plain).help("Transcribe and save")
+                            .font(.system(size: 28)).foregroundColor(.green)
+                    }.buttonStyle(.plain).help("Transcribe")
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
+
+            } else if appState.isProcessing {
+                // Transcribing indicator
+                HStack {
+                    Spacer()
+                    ProgressView().scaleEffect(0.7)
+                    Text("Transcribing...").font(.callout).foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding(.vertical, 10)
+
             } else {
-                // Normal mode: text input + mic + save
-                HStack(alignment: .bottom, spacing: 8) {
-                    // Text field for pasting
-                    TextField("Paste AI response here...", text: $textInput, axis: .vertical)
-                        .textFieldStyle(.plain)
+                // Text input area
+                VStack(spacing: 6) {
+                    // Editable text area
+                    TextEditor(text: $textInput)
                         .font(.body)
-                        .lineLimit(1...5)
-                        .padding(8)
+                        .frame(minHeight: 36, maxHeight: 120)
+                        .padding(4)
                         .background(Color.primary.opacity(0.04))
                         .cornerRadius(10)
+                        .overlay(
+                            // Placeholder
+                            Group {
+                                if textInput.isEmpty {
+                                    Text("Type, paste, or record...")
+                                        .foregroundColor(.secondary.opacity(0.5))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 8)
+                                        .allowsHitTesting(false)
+                                }
+                            }, alignment: .topLeading
+                        )
 
-                    if textInput.isEmpty {
-                        // Mic button (start recording)
+                    // Action buttons
+                    HStack(spacing: 12) {
+                        // Mic button (always visible)
                         Button(action: { appState.startRecording() }) {
-                            Image(systemName: "mic.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(.accentColor)
+                            HStack(spacing: 4) {
+                                Image(systemName: "mic.fill").font(.system(size: 14))
+                                Text("Record").font(.caption)
+                            }
+                            .foregroundColor(.accentColor)
                         }
                         .buttonStyle(.plain)
-                        .disabled(appState.isProcessing)
-                        .help("Record voice")
-                    } else {
-                        // Save button (paste text as "other" role)
-                        Button(action: { saveOtherText() }) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(.orange)
+                        .help("Record voice → transcribe to text box")
+
+                        Spacer()
+
+                        // Source indicator when text is present
+                        if !textInput.isEmpty {
+                            // Toggle role
+                            Button(action: { textSource = textSource == .me ? .other : .me }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: textSource == .me ? "person.fill" : "cpu")
+                                        .font(.system(size: 11))
+                                    Text(textSource == .me ? "My voice" : "AI response")
+                                        .font(.caption)
+                                }
+                                .foregroundColor(textSource == .me ? .accentColor : .orange)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(textSource == .me ? Color.accentColor.opacity(0.1) : Color.orange.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Toggle: my voice or AI response")
+
+                            // Send button
+                            Button(action: { sendText() }) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(textSource == .me ? .accentColor : .orange)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Save to timeline")
                         }
-                        .buttonStyle(.plain)
-                        .disabled(appState.isProcessing)
-                        .help("Save as AI response")
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -344,10 +383,21 @@ struct InputBar: View {
         }
     }
 
-    func saveOtherText() {
+    func transcribeToInput() {
+        Task {
+            let text = await appState.transcribeOnly()
+            if let text, !text.isEmpty {
+                textInput = text
+                textSource = .me  // came from my voice
+            }
+        }
+    }
+
+    func sendText() {
         guard !textInput.isEmpty else { return }
-        Task { await appState.saveText(textInput, role: .other) }
+        Task { await appState.saveText(textInput, role: textSource) }
         textInput = ""
+        textSource = .other  // reset to default
     }
 }
 
@@ -490,6 +540,42 @@ class AppState: ObservableObject {
 
         do { try engine.start(); audioEngine = engine; isRecording = true; lastError = nil }
         catch { lastError = "Mic: \(error.localizedDescription)" }
+    }
+
+    /// Transcribe audio but return text to input box (don't send to timeline)
+    func transcribeOnly() async -> String? {
+        guard isRecording, let engine = audioEngine else { return nil }
+        engine.inputNode.removeTap(onBus: 0); engine.stop()
+        audioEngine = nil; isRecording = false; isProcessing = true
+
+        let wav = makeWav(from: audioData); audioData = Data()
+
+        defer { isProcessing = false }
+
+        do {
+            let url = URL(string: "http://127.0.0.1:7890/v1/voice")!
+            var req = URLRequest(url: url); req.httpMethod = "POST"
+            let b = UUID().uuidString
+            req.setValue("multipart/form-data; boundary=\(b)", forHTTPHeaderField: "Content-Type")
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+            var body = Data()
+            body.append("--\(b)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"r.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+            body.append(wav); body.append("\r\n".data(using: .utf8)!)
+            for (k, v) in [("source","voice"),("env","auto"),("target_app","voice")] {
+                body.append("--\(b)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!)
+            }
+            body.append("--\(b)--\r\n".data(using: .utf8)!)
+            req.httpBody = body
+
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            lastError = nil
+            return json["polished_text"] as? String ?? json["raw_text"] as? String ?? ""
+        } catch {
+            lastError = "\(error.localizedDescription)"
+            return nil
+        }
     }
 
     func cancelRecording() {

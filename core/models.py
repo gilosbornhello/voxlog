@@ -67,6 +67,7 @@ class VoiceResult(BaseModel):
     duration_seconds: float = 0.0
     latency_ms: int = 0
     target_app: str = ""
+    agent: str = ""
     env: Environment = Environment.HOME
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

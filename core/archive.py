@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS voice_log (
 CREATE INDEX IF NOT EXISTS idx_voice_log_created_at ON voice_log(created_at);
 """
 
+MIGRATE_AGENT = "ALTER TABLE voice_log ADD COLUMN agent TEXT DEFAULT ''"
+
 
 class Archive:
     def __init__(self, db_path: Path):
@@ -45,6 +47,11 @@ class Archive:
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA busy_timeout=5000")
         await self._db.executescript(SCHEMA)
+        # Migration: add agent column if missing
+        try:
+            await self._db.execute(MIGRATE_AGENT)
+        except Exception:
+            pass  # Column already exists
         await self._db.commit()
         logger.info("archive.initialized", db=str(self.db_path))
 
@@ -59,8 +66,8 @@ class Archive:
         await self._db.execute(
             """INSERT INTO voice_log
                (id, raw_text, polished_text, asr_provider, llm_provider,
-                polished, duration_seconds, latency_ms, target_app, env, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                polished, duration_seconds, latency_ms, target_app, agent, env, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 result.id,
                 result.raw_text,
@@ -71,6 +78,7 @@ class Archive:
                 result.duration_seconds,
                 result.latency_ms,
                 result.target_app,
+                result.agent,
                 result.env.value,
                 result.created_at.isoformat(),
             ),
@@ -106,6 +114,35 @@ class Archive:
         )
         rows = await cursor.fetchall()
         return [self._row_to_record(row) for row in rows]
+
+    async def list_by_agent(self, agent: str, limit: int = 200) -> list[ArchiveRecord]:
+        """List records for a specific agent."""
+        if not self._db:
+            raise RuntimeError("Archive not initialized")
+        cursor = await self._db.execute(
+            """SELECT id, raw_text, polished_text, asr_provider, llm_provider,
+                      polished, duration_seconds, latency_ms, target_app, env, created_at
+               FROM voice_log
+               WHERE agent = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (agent, limit),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    async def list_agents(self) -> list[dict]:
+        """List all agents with their last message time and count."""
+        if not self._db:
+            raise RuntimeError("Archive not initialized")
+        cursor = await self._db.execute(
+            """SELECT agent, COUNT(*) as cnt, MAX(created_at) as last_ts
+               FROM voice_log
+               WHERE agent != ''
+               GROUP BY agent
+               ORDER BY last_ts DESC"""
+        )
+        rows = await cursor.fetchall()
+        return [{"agent": r[0], "count": r[1], "last_active": r[2]} for r in rows]
 
     async def count(self) -> int:
         if not self._db:

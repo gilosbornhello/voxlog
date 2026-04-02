@@ -94,6 +94,7 @@ async def voice_endpoint(
     source: str = Form("macos"),
     env: str = Form("home"),
     target_app: str = Form(""),
+    agent: str = Form(""),
     _auth: None = Depends(verify_token),
 ) -> VoiceResult:
     assert _config and _archive and _dictionary
@@ -152,6 +153,7 @@ async def voice_endpoint(
             duration_seconds=duration_seconds,
             latency_ms=total_latency,
             target_app=target_app,
+            agent=agent,
             env=environment,
         )
 
@@ -222,6 +224,7 @@ async def save_text_endpoint(
     text: str = Form(...),
     source: str = Form("paste"),
     target_app: str = Form(""),
+    agent: str = Form(""),
     _auth: None = Depends(verify_token),
 ) -> VoiceResult:
     """Save pasted text directly to archive. No ASR, no LLM. For recording AI responses."""
@@ -237,6 +240,7 @@ async def save_text_endpoint(
         duration_seconds=0.0,
         latency_ms=0,
         target_app=target_app or source,
+        agent=agent,
         env=_config.env,
     )
 
@@ -247,6 +251,23 @@ async def save_text_endpoint(
         logger.error("save.failed", error=str(e))
 
     return result
+
+
+@app.get("/v1/agents")
+async def agents_endpoint(_auth: None = Depends(verify_token)):
+    """List all agents with message counts."""
+    assert _archive
+    return await _archive.list_agents()
+
+
+@app.get("/v1/history/agent")
+async def history_by_agent_endpoint(
+    agent: str = Query(...),
+    limit: int = Query(default=200, le=500),
+    _auth: None = Depends(verify_token),
+):
+    assert _archive
+    return await _archive.list_by_agent(agent, limit=limit)
 
 
 @app.get("/v1/history")

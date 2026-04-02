@@ -95,51 +95,104 @@ struct MainLayout: View {
     }
 }
 
-// MARK: - Sidebar
+// MARK: - Agent Sidebar
+
+struct AgentInfo: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let icon: String
+    let parent: String  // empty = top level
+    var count: Int = 0
+    var lastActive: String = ""
+}
+
+let DEFAULT_AGENTS: [AgentInfo] = [
+    AgentInfo(id: "claude-code", name: "Claude Code", icon: "terminal", parent: ""),
+    AgentInfo(id: "claude-code/office-hours", name: "Office Hours", icon: "person.2", parent: "claude-code"),
+    AgentInfo(id: "claude-code/ceo-review", name: "CEO Review", icon: "star", parent: "claude-code"),
+    AgentInfo(id: "claude-code/eng-review", name: "Eng Review", icon: "wrench", parent: "claude-code"),
+    AgentInfo(id: "claude-code/design-review", name: "Design Review", icon: "paintbrush", parent: "claude-code"),
+    AgentInfo(id: "claude-mac", name: "Claude for Mac", icon: "desktopcomputer", parent: ""),
+    AgentInfo(id: "claude-mac/chat", name: "Chat", icon: "bubble.left", parent: "claude-mac"),
+    AgentInfo(id: "claude-mac/cowork", name: "Co-work", icon: "person.2.fill", parent: "claude-mac"),
+    AgentInfo(id: "openclaw", name: "OpenClaw", icon: "cpu", parent: ""),
+    AgentInfo(id: "general", name: "General", icon: "doc.text", parent: ""),
+]
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("History").font(.caption).foregroundColor(.secondary)
+            Text("Agents").font(.caption).fontWeight(.semibold).foregroundColor(.secondary)
                 .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(appState.availableDates, id: \.self) { date in
-                        HStack {
-                            Text(formatDate(date)).font(.callout)
-                            Spacer()
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(topLevelAgents) { agent in
+                        AgentRow(agent: agent, isSelected: agent.id == appState.selectedAgent)
+                            .onTapGesture { appState.selectAgent(agent.id) }
+
+                        // Sub-agents
+                        ForEach(subAgents(for: agent.id)) { sub in
+                            AgentRow(agent: sub, isSelected: sub.id == appState.selectedAgent, indent: true)
+                                .onTapGesture { appState.selectAgent(sub.id) }
                         }
-                        .padding(.horizontal, 8).padding(.vertical, 6)
-                        .background(date == appState.selectedDate ? Color.accentColor.opacity(0.15) : Color.clear)
-                        .cornerRadius(6)
-                        .onTapGesture { appState.selectDate(date) }
                     }
-                }.padding(.horizontal, 8)
+                }
+                .padding(.horizontal, 6)
             }
 
             Divider()
+
             Button(action: { appState.syncToObsidian() }) {
-                HStack { Image(systemName: "arrow.triangle.2.circlepath"); Text("Sync Obsidian") }
-                    .font(.caption).foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("Sync Obsidian")
+                }.font(.caption).foregroundColor(.secondary)
             }.buttonStyle(.plain).padding(.horizontal, 12).padding(.vertical, 8)
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
 
-    func formatDate(_ d: String) -> String {
-        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        if d == today { return "Today" }
-        let y = String(ISO8601DateFormatter().string(from: Date().addingTimeInterval(-86400)).prefix(10))
-        if d == y { return "Yesterday" }
-        let p = d.split(separator: "-")
-        if p.count == 3 {
-            let m = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-            let mi = Int(p[1]) ?? 0
-            if mi > 0, mi < 13 { return "\(m[mi]) \(Int(p[2]) ?? 0)" }
+    var topLevelAgents: [AgentInfo] {
+        appState.agents.filter { $0.parent.isEmpty }
+    }
+
+    func subAgents(for parentId: String) -> [AgentInfo] {
+        appState.agents.filter { $0.parent == parentId }
+    }
+}
+
+struct AgentRow: View {
+    let agent: AgentInfo
+    let isSelected: Bool
+    var indent: Bool = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: agent.icon)
+                .font(.system(size: 11))
+                .foregroundColor(isSelected ? .accentColor : .secondary)
+                .frame(width: 16)
+            Text(agent.name)
+                .font(.callout)
+                .lineLimit(1)
+            Spacer()
+            if agent.count > 0 {
+                Text("\(agent.count)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.primary.opacity(0.06))
+                    .cornerRadius(8)
+            }
         }
-        return d
+        .padding(.leading, indent ? 20 : 8)
+        .padding(.trailing, 8)
+        .padding(.vertical, 5)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .cornerRadius(6)
     }
 }
 
@@ -358,14 +411,12 @@ class AppState: ObservableObject {
     @Published var serverRunning = false
     @Published var envLabel = ""
     @Published var modelLabel = ""
-    @Published var availableDates: [String] = []
-    @Published var selectedDate: String = ""
+    @Published var agents: [AgentInfo] = DEFAULT_AGENTS
+    @Published var selectedAgent: String = "claude-code"
     @Published var totalRecordings = 0
 
     var selectedDateLabel: String {
-        if selectedDate.isEmpty { return "Today" }
-        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        return selectedDate == today ? "Today" : selectedDate
+        agents.first(where: { $0.id == selectedAgent })?.name ?? "VoxLog"
     }
 
     private let processManager = ProcessManager()
@@ -389,10 +440,8 @@ class AppState: ObservableObject {
         } catch { lastError = "Server failed"; return }
 
         await detectEnv()
-        await loadAvailableDates()
-        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
-        selectedDate = today
-        await loadMessages(for: today)
+        await loadAgentCounts()
+        await loadMessages(for: selectedAgent)
 
         if AXIsProcessTrusted() {
             hotkeyManager.onRecordStart = { [weak self] in Task { @MainActor in self?.startRecording() } }
@@ -426,34 +475,40 @@ class AppState: ObservableObject {
 
     // MARK: - History
 
-    func loadAvailableDates() async {
-        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?limit=500") else { return }
+    func loadAgentCounts() async {
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/agents") else { return }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: req),
            let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            var dates = Set<String>()
-            for item in items { if let ts = item["created_at"] as? String { dates.insert(String(ts.prefix(10))) } }
-            availableDates = dates.sorted().reversed()
+            // Update counts in existing agents
+            for item in items {
+                if let agentId = item["agent"] as? String,
+                   let count = item["count"] as? Int {
+                    if let idx = agents.firstIndex(where: { $0.id == agentId }) {
+                        agents[idx].count = count
+                    }
+                }
+            }
         }
     }
 
-    func selectDate(_ date: String) {
-        selectedDate = date
-        Task { await loadMessages(for: date) }
+    func selectAgent(_ agentId: String) {
+        selectedAgent = agentId
+        Task { await loadMessages(for: agentId) }
     }
 
-    func loadMessages(for date: String) async {
-        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?date=\(date)&limit=500") else { return }
+    func loadMessages(for agentId: String) async {
+        let encoded = agentId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? agentId
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/history/agent?agent=\(encoded)&limit=500") else { return }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let (data, _) = try? await URLSession.shared.data(for: req),
            let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            messages = items.compactMap { item in
+            messages = items.reversed().compactMap { item in
                 guard let text = item["polished_text"] as? String, !text.isEmpty,
                       let ts = item["created_at"] as? String else { return nil }
                 let app = item["target_app"] as? String ?? ""
-                // Determine role: paste = other, everything else = me
                 let role: MessageRole = app.contains("paste") ? .other : .me
                 return VoxMessage(
                     text: text, time: String(ts.dropFirst(11).prefix(5)),
@@ -513,7 +568,7 @@ class AppState: ObservableObject {
             var body = Data()
             body.append("--\(b)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"r.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
             body.append(wav); body.append("\r\n".data(using: .utf8)!)
-            for (k, v) in [("source","voice"),("env","auto"),("target_app","voice")] {
+            for (k, v) in [("source","voice"),("env","auto"),("target_app","voice"),("agent",selectedAgent)] {
                 body.append("--\(b)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!)
             }
             body.append("--\(b)--\r\n".data(using: .utf8)!)
@@ -552,7 +607,7 @@ class AppState: ObservableObject {
             var body = Data()
             body.append("--\(b)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"r.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
             body.append(wav); body.append("\r\n".data(using: .utf8)!)
-            for (k, v) in [("source","voice"),("env","auto"),("target_app","voice")] {
+            for (k, v) in [("source","voice"),("env","auto"),("target_app","voice"),("agent",selectedAgent)] {
                 body.append("--\(b)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!)
             }
             body.append("--\(b)--\r\n".data(using: .utf8)!)
@@ -582,7 +637,7 @@ class AppState: ObservableObject {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            req.httpBody = "text=\(encoded)&source=paste&target_app=paste".data(using: .utf8)
+            req.httpBody = "text=\(encoded)&source=paste&target_app=paste&agent=\(selectedAgent)".data(using: .utf8)
 
             let (_, _) = try await URLSession.shared.data(for: req)
             appendMessage(text: text, role: role, latency: 0)
@@ -609,7 +664,10 @@ class AppState: ObservableObject {
         let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
         messages.append(VoxMessage(text: text, time: fmt.string(from: Date()), role: role, latencyMs: latency))
         totalRecordings += 1; lastError = nil
-        if !availableDates.contains(selectedDate) { availableDates.insert(selectedDate, at: 0) }
+        // Update agent count
+        if let idx = agents.firstIndex(where: { $0.id == selectedAgent }) {
+            agents[idx].count += 1
+        }
     }
 
     private func makeWav(from pcm: Data) -> Data {

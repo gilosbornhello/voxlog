@@ -233,6 +233,37 @@ async def export_endpoint(
     return await _archive.export_markdown(date)
 
 
+@app.get("/v1/history/export/json", response_class=PlainTextResponse)
+async def export_json_endpoint(
+    date: str = Query(...), _auth: None = Depends(verify_token),
+) -> str:
+    from core.exporter import export_json
+    assert _config
+    return export_json(_config.db_path, date)
+
+
+@app.get("/v1/history/export/csv", response_class=PlainTextResponse)
+async def export_csv_endpoint(
+    date: str = Query(...), _auth: None = Depends(verify_token),
+) -> str:
+    from core.exporter import export_csv
+    assert _config
+    return export_csv(_config.db_path, date)
+
+
+@app.get("/v1/history/export/weekly", response_class=PlainTextResponse)
+async def export_weekly_endpoint(
+    end_date: str = Query(default="", description="End date YYYY-MM-DD, defaults to today"),
+    _auth: None = Depends(verify_token),
+) -> str:
+    from core.exporter import export_weekly_summary
+    assert _config
+    if not end_date:
+        from datetime import datetime, timezone
+        end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return export_weekly_summary(_config.db_path, end_date)
+
+
 @app.get("/v1/history/count")
 async def count_endpoint(_auth: None = Depends(verify_token)) -> dict:
     assert _archive

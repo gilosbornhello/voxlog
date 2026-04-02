@@ -3,403 +3,387 @@ import AppKit
 import AVFoundation
 
 @main
-struct VoxLogApp: App {
-    @StateObject private var appState = AppState()
-
-    var body: some Scene {
-        Window("VoxLog", id: "main") {
-            MainView()
-                .environmentObject(appState)
-                .frame(minWidth: 400, minHeight: 600)
-                .task { await appState.start() }
-        }
-        .defaultSize(width: 400, height: 600)
+enum VoxLogEntry {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
     }
 }
 
-// MARK: - Main View
+@MainActor
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var window: NSWindow!
+    let appState = AppState()
 
-struct MainView: View {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let contentView = ChatView().environmentObject(appState)
+
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false
+        )
+        window.title = "VoxLog"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.minSize = NSSize(width: 360, height: 480)
+        NSApp.activate(ignoringOtherApps: true)
+
+        Task { await appState.start() }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationWillTerminate(_ notification: Notification) { appState.stop() }
+}
+
+// MARK: - Chat View (ChatGPT style)
+
+struct ChatView: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            header
+            // Message history
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(appState.messages) { msg in
+                            MessageBubble(message: msg)
+                                .id(msg.id)
+                        }
+
+                        // Listening indicator
+                        if appState.isRecording {
+                            HStack(spacing: 8) {
+                                PulsingDot()
+                                Text("Listening...")
+                                    .font(.callout)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal)
+                            .id("listening")
+                        }
+
+                        // Processing indicator
+                        if appState.isProcessing {
+                            HStack(spacing: 8) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Transcribing...")
+                                    .font(.callout)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal)
+                            .id("processing")
+                        }
+                    }
+                    .padding(.vertical, 12)
+                }
+                .onChange(of: appState.messages.count) {
+                    withAnimation {
+                        proxy.scrollTo(appState.messages.last?.id, anchor: .bottom)
+                    }
+                }
+                .onChange(of: appState.isRecording) {
+                    if appState.isRecording {
+                        withAnimation { proxy.scrollTo("listening", anchor: .bottom) }
+                    }
+                }
+            }
+
             Divider()
 
-            // Permission warning
-            if !appState.permissionsOK {
-                permissionBanner
-                Divider()
-            }
-
-            // Content
-            ScrollView {
-                VStack(spacing: 16) {
-                    recordSection
-                    if let result = appState.lastResult { resultSection(result) }
-                    if let error = appState.lastError { errorSection(error) }
-                    statusSection
-                    toolsSection
-                }
-                .padding()
-            }
+            // Input bar (ChatGPT style)
+            InputBar()
+                .environmentObject(appState)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
+}
 
-    // MARK: - Header
+// MARK: - Message Bubble
 
-    var header: some View {
-        HStack {
-            Image(systemName: appState.isRecording ? "mic.fill" : "waveform")
-                .font(.title2)
-                .foregroundColor(appState.isRecording ? .red : .accentColor)
-            Text("VoxLog")
-                .font(.title2).fontWeight(.bold)
+struct MessageBubble: View {
+    let message: VoxMessage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(message.text)
+                .font(.body)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.accentColor.opacity(0.1))
+                .cornerRadius(16)
+
+            HStack(spacing: 8) {
+                Text(message.time)
+                    .font(.caption2)
+                if message.latencyMs > 0 {
+                    Text("\(message.latencyMs)ms")
+                        .font(.caption2)
+                }
+                if !message.targetApp.isEmpty {
+                    Text(message.targetApp)
+                        .font(.caption2)
+                        .padding(.horizontal, 4)
+                        .background(Color.primary.opacity(0.05))
+                        .cornerRadius(3)
+                }
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 14)
+        }
+        .padding(.horizontal, 12)
+    }
+}
+
+// MARK: - Input Bar
+
+struct InputBar: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Status dot
+            Circle()
+                .fill(appState.serverRunning ? .green : .red)
+                .frame(width: 8, height: 8)
+
+            Text(appState.envLabel)
+                .font(.caption)
+                .foregroundColor(.secondary)
+
             Spacer()
-            Picker("", selection: $appState.environment) {
-                ForEach(VoxEnvironment.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 200)
-        }
-        .padding()
-    }
 
-    // MARK: - Permission Banner
-
-    var permissionBanner: some View {
-        VStack(spacing: 8) {
-            Label("Needs Accessibility Permission", systemImage: "lock.shield")
-                .font(.headline).foregroundColor(.orange)
-            Text("Required for global hotkey and paste. Add VoxLog in System Settings → Privacy → Accessibility.")
-                .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
-            HStack {
-                Button("Open Settings") { appState.openAccessibilitySettings() }
-                    .buttonStyle(.borderedProminent)
-                Button("Retry") { appState.retryPermissions() }
-            }
-        }
-        .padding()
-        .background(Color.orange.opacity(0.08))
-    }
-
-    // MARK: - Record
-
-    var recordSection: some View {
-        GroupBox("Record") {
-            VStack(spacing: 12) {
+            // Mic button
+            Button(action: {
                 if appState.isRecording {
-                    HStack {
-                        Circle().fill(.red).frame(width: 12, height: 12)
-                        Text("Recording... click again to stop")
-                            .foregroundColor(.red)
-                    }
-                } else if appState.isProcessing {
-                    HStack { ProgressView().scaleEffect(0.8); Text("Processing...") }
+                    // Stop listening → start processing
+                    Task { await appState.stopAndProcess() }
                 } else {
-                    Text("Click mic to record. Or hold Left Alt key.")
-                        .foregroundColor(.secondary).font(.callout)
+                    appState.startRecording()
                 }
-
-                Button(action: { appState.toggleRecording() }) {
-                    ZStack {
-                        Circle()
-                            .fill(appState.isRecording ? Color.red.opacity(0.15) : Color.accentColor.opacity(0.1))
-                            .frame(width: 72, height: 72)
-                        Image(systemName: appState.isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                            .font(.system(size: 44))
-                            .foregroundColor(appState.isRecording ? .red : .accentColor)
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(appState.isProcessing)
+            }) {
+                Image(systemName: appState.isRecording ? "arrow.up.circle.fill" : "mic.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(appState.isRecording ? .green : .accentColor)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            .buttonStyle(.plain)
+            .disabled(appState.isProcessing)
+            .help(appState.isRecording ? "Send" : "Start recording")
         }
-    }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
 
-    // MARK: - Result
-
-    func resultSection(_ result: AppState.VoiceResultData) -> some View {
-        GroupBox("Last Result") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(result.text)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                HStack {
-                    Text("\(result.asr) → \(result.llm)")
-                        .font(.caption2).foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(result.latencyMs)ms")
-                        .font(.caption2).foregroundColor(.secondary)
-                    Button("Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(result.text, forType: .string)
-                    }
-                    .controlSize(.small)
-                }
-            }
-        }
-    }
-
-    // MARK: - Error
-
-    func errorSection(_ error: String) -> some View {
-        GroupBox {
-            Label(error, systemImage: "exclamationmark.triangle")
-                .foregroundColor(.red).font(.caption)
-        }
-    }
-
-    // MARK: - Status
-
-    var statusSection: some View {
-        GroupBox("Status") {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Circle().fill(appState.serverRunning ? .green : .red).frame(width: 8, height: 8)
-                    Text("Server: \(appState.serverRunning ? "Running" : "Off")")
-                    Spacer()
-                    Text("Today: \(appState.totalRecordings)")
-                }
+        // Error bar
+        if let error = appState.lastError {
+            Text(error)
                 .font(.caption)
-                HStack {
-                    Text("Hotkey: Left Alt")
-                    Spacer()
-                    Text("Permissions: \(appState.permissionsOK ? "OK" : "Needed")")
-                        .foregroundColor(appState.permissionsOK ? .green : .orange)
-                }
-                .font(.caption)
-            }
+                .foregroundColor(.red)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 6)
         }
     }
+}
 
-    // MARK: - Tools
+// MARK: - Pulsing Dot Animation
 
-    var toolsSection: some View {
-        GroupBox("Tools") {
-            HStack {
-                Button("Web UI") { NSWorkspace.shared.open(URL(string: "http://localhost:7890")!) }
-                Button("API Docs") { NSWorkspace.shared.open(URL(string: "http://localhost:7890/static/api.html")!) }
-                Spacer()
-                Button("Quit") { NSApplication.shared.terminate(nil) }
-                    .foregroundColor(.red)
-            }
-            .font(.caption)
-        }
+struct PulsingDot: View {
+    @State private var scale: CGFloat = 1.0
+    var body: some View {
+        Circle()
+            .fill(.red)
+            .frame(width: 10, height: 10)
+            .scaleEffect(scale)
+            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: scale)
+            .onAppear { scale = 1.4 }
     }
+}
+
+// MARK: - Message Model
+
+struct VoxMessage: Identifiable {
+    let id = UUID()
+    let text: String
+    let time: String
+    let latencyMs: Int
+    let targetApp: String
 }
 
 // MARK: - App State
 
 @MainActor
 class AppState: ObservableObject {
-    struct VoiceResultData {
-        let text: String
-        let asr: String
-        let llm: String
-        let latencyMs: Int
-    }
-
+    @Published var messages: [VoxMessage] = []
     @Published var isRecording = false
     @Published var isProcessing = false
     @Published var lastError: String?
-    @Published var lastResult: VoiceResultData?
     @Published var serverRunning = false
-    @Published var environment: VoxEnvironment = .home
-    @Published var totalRecordings = 0
-    @Published var permissionsOK = false
+    @Published var envLabel = ""
 
     private let processManager = ProcessManager()
     private let hotkeyManager = HotkeyManager()
-    private var audioRecorder: AVAudioEngine?
+    private var audioEngine: AVAudioEngine?
     private var audioData = Data()
     private let sampleRate: Double = 16000
 
     func start() async {
-        permissionsOK = AXIsProcessTrusted()
-
-        // Start server
         do {
             try await processManager.startServer()
             serverRunning = true
-            // Wait for health
             for _ in 0..<15 {
                 if let url = URL(string: "http://127.0.0.1:7890/health"),
-                   let (_, resp) = try? await URLSession.shared.data(from: url),
-                   (resp as? HTTPURLResponse)?.statusCode == 200 {
-                    break
-                }
+                   let (_, r) = try? await URLSession.shared.data(from: url),
+                   (r as? HTTPURLResponse)?.statusCode == 200 { break }
                 try? await Task.sleep(for: .milliseconds(500))
             }
-            print("[VoxLog] Server ready")
-        } catch {
-            lastError = "Server: \(error.localizedDescription)"
-            serverRunning = false
-        }
+        } catch { lastError = "Server failed"; return }
 
-        if permissionsOK { setupHotkey() }
+        await detectEnv()
+
+        // Load today's history
+        await loadHistory()
+
+        if AXIsProcessTrusted() {
+            hotkeyManager.onRecordStart = { [weak self] in Task { @MainActor in self?.startRecording() } }
+            hotkeyManager.onRecordStop = { [weak self] in Task { @MainActor in await self?.stopAndProcess() } }
+            hotkeyManager.register()
+        }
     }
 
-    func setupHotkey() {
-        hotkeyManager.onRecordStart = { [weak self] in
-            Task { @MainActor in self?.startRecording() }
+    func detectEnv() async {
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/detect") else { return }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer voxlog-dev-token", forHTTPHeaderField: "Authorization")
+        if let (data, _) = try? await URLSession.shared.data(for: req),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let env = json["env"] as? String {
+            envLabel = env == "home" ? "Home" : "Office"
         }
-        hotkeyManager.onRecordStop = { [weak self] in
-            Task { @MainActor in await self?.stopAndProcess() }
+    }
+
+    func loadHistory() async {
+        let today = ISO8601DateFormatter().string(from: Date()).prefix(10)
+        guard let url = URL(string: "http://127.0.0.1:7890/v1/history?date=\(today)&limit=50") else { return }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer voxlog-dev-token", forHTTPHeaderField: "Authorization")
+        if let (data, _) = try? await URLSession.shared.data(for: req),
+           let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            messages = items.compactMap { item in
+                guard let text = item["polished_text"] as? String, !text.isEmpty,
+                      let ts = item["created_at"] as? String else { return nil }
+                let time = String(ts.dropFirst(11).prefix(5))
+                let latency = item["latency_ms"] as? Int ?? 0
+                let app = item["target_app"] as? String ?? ""
+                return VoxMessage(text: text, time: time, latencyMs: latency, targetApp: app)
+            }
         }
-        hotkeyManager.register()
     }
 
     func toggleRecording() {
-        if isRecording {
-            Task { await stopAndProcess() }
-        } else {
-            startRecording()
-        }
+        if isRecording { Task { await stopAndProcess() } }
+        else { startRecording() }
     }
 
     func startRecording() {
         guard !isRecording, !isProcessing else { return }
         audioData = Data()
-
         let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
 
-        guard let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: true
-        ), let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            lastError = "Audio format error"
-            return
+        guard let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: true),
+              let converter = AVAudioConverter(from: format, to: target) else {
+            lastError = "Audio format error"; return
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self else { return }
-            let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * self.sampleRate / inputFormat.sampleRate)
-            guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else { return }
-            var error: NSError?
-            converter.convert(to: converted, error: &error) { _, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
-            if let ch = converted.int16ChannelData {
-                let data = Data(bytes: ch[0], count: Int(converted.frameLength) * 2)
-                DispatchQueue.main.async { self.audioData.append(data) }
+            let count = AVAudioFrameCount(Double(buffer.frameLength) * self.sampleRate / format.sampleRate)
+            guard let conv = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: count) else { return }
+            var err: NSError?
+            converter.convert(to: conv, error: &err) { _, s in s.pointee = .haveData; return buffer }
+            if let ch = conv.int16ChannelData {
+                let d = Data(bytes: ch[0], count: Int(conv.frameLength) * 2)
+                DispatchQueue.main.async { self.audioData.append(d) }
             }
         }
 
         do {
             try engine.start()
-            audioRecorder = engine
+            audioEngine = engine
             isRecording = true
-            lastError = nil; lastResult = nil
-        } catch {
-            lastError = "Mic: \(error.localizedDescription)"
-        }
+            lastError = nil
+        } catch { lastError = "Mic: \(error.localizedDescription)" }
     }
 
     func stopAndProcess() async {
-        guard isRecording, let engine = audioRecorder else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        audioRecorder = nil
-        isRecording = false
-        isProcessing = true
+        guard isRecording, let engine = audioEngine else { return }
+        engine.inputNode.removeTap(onBus: 0); engine.stop()
+        audioEngine = nil; isRecording = false; isProcessing = true
 
-        let wavData = makeWav(from: audioData)
-        audioData = Data()
+        let wav = makeWav(from: audioData); audioData = Data()
 
         do {
-            let result = try await sendToServer(wav: wavData)
-            lastResult = result
-            totalRecordings += 1
-            lastError = nil
-        } catch {
-            lastError = "\(error.localizedDescription)"
-        }
+            let url = URL(string: "http://127.0.0.1:7890/v1/voice")!
+            var req = URLRequest(url: url); req.httpMethod = "POST"
+            let b = UUID().uuidString
+            req.setValue("multipart/form-data; boundary=\(b)", forHTTPHeaderField: "Content-Type")
+            req.setValue("Bearer voxlog-dev-token", forHTTPHeaderField: "Authorization")
+
+            var body = Data()
+            body.append("--\(b)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"r.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+            body.append(wav); body.append("\r\n".data(using: .utf8)!)
+            for (k, v) in [("source","app"),("env","auto"),("target_app",NSWorkspace.shared.frontmostApplication?.localizedName ?? "")] {
+                body.append("--\(b)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!)
+            }
+            body.append("--\(b)--\r\n".data(using: .utf8)!)
+            req.httpBody = body
+
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            let text = json["polished_text"] as? String ?? ""
+            let latency = json["latency_ms"] as? Int ?? 0
+            let app = json["target_app"] as? String ?? ""
+
+            if !text.isEmpty {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+
+                let now = Date()
+                let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+                messages.append(VoxMessage(text: text, time: fmt.string(from: now), latencyMs: latency, targetApp: app))
+                lastError = nil
+            }
+        } catch { lastError = "\(error.localizedDescription)" }
+
         isProcessing = false
     }
 
-    func sendToServer(wav: Data) async throws -> VoiceResultData {
-        let url = URL(string: "http://127.0.0.1:7890/v1/voice")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer voxlog-dev-token", forHTTPHeaderField: "Authorization")
-
-        var body = Data()
-        // Audio
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"rec.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
-        body.append(wav)
-        body.append("\r\n".data(using: .utf8)!)
-        // Fields
-        for (k, v) in [("source", "macos_app"), ("env", environment.rawValue), ("target_app", NSWorkspace.shared.frontmostApplication?.localizedName ?? "")] {
-            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n".data(using: .utf8)!)
-        }
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "VoxLog", code: (response as? HTTPURLResponse)?.statusCode ?? 0, userInfo: [NSLocalizedDescriptionKey: msg])
-        }
-
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-        return VoiceResultData(
-            text: json["polished_text"] as? String ?? json["raw_text"] as? String ?? "",
-            asr: json["asr_provider"] as? String ?? "unknown",
-            llm: json["llm_provider"] as? String ?? "none",
-            latencyMs: json["latency_ms"] as? Int ?? 0
-        )
-    }
-
-    func openAccessibilitySettings() {
-        _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
-    }
-
-    func retryPermissions() {
-        permissionsOK = AXIsProcessTrusted()
-        if permissionsOK { setupHotkey(); lastError = nil }
-        else { lastError = "Add VoxLog in System Settings → Privacy → Accessibility" }
+    func stop() {
+        hotkeyManager.unregister()
+        if let e = audioEngine { e.inputNode.removeTap(onBus: 0); e.stop() }
+        processManager.stopServer()
     }
 
     private func makeWav(from pcm: Data) -> Data {
-        let sr = UInt32(sampleRate)
-        let dataSize = UInt32(pcm.count)
+        let sr = UInt32(sampleRate), sz = UInt32(pcm.count)
         var h = Data(capacity: 44)
         h.append(contentsOf: "RIFF".utf8)
-        h.append(contentsOf: withUnsafeBytes(of: (dataSize + 36).littleEndian) { Array($0) })
+        h.append(contentsOf: withUnsafeBytes(of: (sz+36).littleEndian){Array($0)})
         h.append(contentsOf: "WAVEfmt ".utf8)
-        h.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian) { Array($0) })
-        h.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) }) // PCM
-        h.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) }) // mono
-        h.append(contentsOf: withUnsafeBytes(of: sr.littleEndian) { Array($0) })
-        h.append(contentsOf: withUnsafeBytes(of: (sr * 2).littleEndian) { Array($0) })
-        h.append(contentsOf: withUnsafeBytes(of: UInt16(2).littleEndian) { Array($0) })
-        h.append(contentsOf: withUnsafeBytes(of: UInt16(16).littleEndian) { Array($0) })
+        h.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian){Array($0)})
+        h.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian){Array($0)})
+        h.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian){Array($0)})
+        h.append(contentsOf: withUnsafeBytes(of: sr.littleEndian){Array($0)})
+        h.append(contentsOf: withUnsafeBytes(of: (sr*2).littleEndian){Array($0)})
+        h.append(contentsOf: withUnsafeBytes(of: UInt16(2).littleEndian){Array($0)})
+        h.append(contentsOf: withUnsafeBytes(of: UInt16(16).littleEndian){Array($0)})
         h.append(contentsOf: "data".utf8)
-        h.append(contentsOf: withUnsafeBytes(of: dataSize.littleEndian) { Array($0) })
-        h.append(pcm)
-        return h
-    }
-}
-
-// MARK: - Environment
-
-enum VoxEnvironment: String, CaseIterable {
-    case home = "home"
-    case office = "office"
-    var label: String {
-        switch self {
-        case .home: return "Home (US)"
-        case .office: return "Office (CN)"
-        }
+        h.append(contentsOf: withUnsafeBytes(of: sz.littleEndian){Array($0)})
+        h.append(pcm); return h
     }
 }

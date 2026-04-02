@@ -35,7 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = MainLayout().environmentObject(appState)
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 700),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
@@ -43,7 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
         window.makeKeyAndOrderFront(nil)
-        window.minSize = NSSize(width: 420, height: 500)
+        window.minSize = NSSize(width: 500, height: 500)
         NSApp.activate(ignoringOtherApps: true)
         Task { await appState.start() }
     }
@@ -151,12 +151,19 @@ struct MainLayout: View {
             }
             .frame(minWidth: 380)
 
-            // Right sidebar: Markdown preview
+        }
+        .overlay(alignment: .trailing) {
+            // Right sidebar: slides in from right edge, overlays on top
             if showPreview {
-                Divider()
-                MarkdownPreview(filePath: previewPath, onClose: { togglePreview() })
-                    .frame(width: previewWidth)
-                    .transition(.move(edge: .trailing))
+                HStack(spacing: 0) {
+                    // Divider line
+                    Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 1)
+
+                    MarkdownPreview(filePath: previewPath, onClose: { togglePreview() })
+                        .frame(width: previewWidth, maxHeight: .infinity)
+                        .background(.ultraThickMaterial)
+                }
+                .transition(.move(edge: .trailing))
             }
         }
     }
@@ -167,21 +174,7 @@ struct MainLayout: View {
 
     func togglePreview(forceOpen: Bool = false) {
         let willShow = forceOpen || !showPreview
-
-        // Expand/shrink window width so chat area stays the same size
-        if let window = NSApp.mainWindow {
-            var frame = window.frame
-            if willShow && !showPreview {
-                // Opening: expand window to the right
-                frame.size.width += previewWidth
-            } else if !willShow && showPreview {
-                // Closing: shrink window from the right
-                frame.size.width -= previewWidth
-            }
-            window.setFrame(frame, display: true, animate: true)
-        }
-
-        withAnimation(.easeInOut(duration: 0.2)) { showPreview = willShow }
+        withAnimation(.easeInOut(duration: 0.15)) { showPreview = willShow }
     }
 }
 

@@ -89,13 +89,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 enum MessageRole: String { case me, other }
 
+enum MessageContent {
+    case text(String)
+    case image(String)  // file path to image
+    case file(String)   // file path to document
+}
+
 struct VoxMessage: Identifiable {
-    let id: String  // matches server record id
+    let id: String
     let text: String
     let time: String
     let role: MessageRole
     let latencyMs: Int
     let createdAt: Date
+    var attachments: [MessageAttachment] = []
+}
+
+struct MessageAttachment: Identifiable {
+    let id = UUID()
+    let path: String
+    let name: String
+    let type: AttachmentType
+
+    enum AttachmentType { case image, pdf, markdown, other }
+
+    static func detect(path: String) -> MessageAttachment {
+        let ext = (path as NSString).pathExtension.lowercased()
+        let name = (path as NSString).lastPathComponent
+        let type: AttachmentType = ["png","jpg","jpeg","gif","webp","heic"].contains(ext) ? .image :
+                                   ext == "pdf" ? .pdf :
+                                   ["md","markdown"].contains(ext) ? .markdown : .other
+        return MessageAttachment(path: path, name: name, type: type)
+    }
 }
 
 // MARK: - Main Layout
@@ -412,24 +437,50 @@ struct ChatBubble: View {
             VStack(alignment: message.role == .me ? .trailing : .leading, spacing: 3) {
                 ZStack(alignment: message.role == .me ? .topTrailing : .topLeading) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(message.text)
-                            .font(.body)
-                            .textSelection(.enabled)
-
-                        // File path links
-                        ForEach(filePaths, id: \.self) { path in
-                            Button(action: { onFileTap?(path) }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "doc.text.fill").font(.caption2)
-                                    Text((path as NSString).lastPathComponent)
-                                        .font(.caption).lineLimit(1)
-                                }
-                                .foregroundColor(.accentColor)
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(Color.accentColor.opacity(0.1))
-                                .cornerRadius(4)
+                        // Text content (hide if only attachments)
+                        let cleanText = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let isOnlyPaths = filePaths.count > 0 && filePaths.allSatisfy { cleanText.contains($0) } &&
+                            cleanText.split(separator: "\n").allSatisfy { line in
+                                let l = line.trimmingCharacters(in: .whitespaces)
+                                return l.hasPrefix("/") || l.hasPrefix("~") || l.isEmpty
                             }
-                            .buttonStyle(.plain)
+
+                        if !isOnlyPaths && !cleanText.isEmpty {
+                            Text(message.text)
+                                .font(.body)
+                                .textSelection(.enabled)
+                        }
+
+                        // Image thumbnails
+                        ForEach(message.attachments.filter { $0.type == .image }, id: \.id) { att in
+                            let expanded = (att.path as NSString).expandingTildeInPath
+                            if let nsImage = NSImage(contentsOfFile: expanded) {
+                                Image(nsImage: nsImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: 200, maxHeight: 200)
+                                    .cornerRadius(8)
+                                    .onTapGesture { onFileTap?(att.path) }
+                            }
+                        }
+
+                        // File links (non-image)
+                        ForEach(filePaths, id: \.self) { path in
+                            let ext = (path as NSString).pathExtension.lowercased()
+                            if !["png","jpg","jpeg","gif","webp","heic"].contains(ext) {
+                                Button(action: { onFileTap?(path) }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: ext == "pdf" ? "doc.richtext.fill" : "doc.text.fill").font(.caption2)
+                                        Text((path as NSString).lastPathComponent)
+                                            .font(.caption).lineLimit(1)
+                                    }
+                                    .foregroundColor(.accentColor)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Color.accentColor.opacity(0.1))
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -684,13 +735,16 @@ struct InputBar: View {
 
     func detectFilePath() {
         let text = pasteText.trimmingCharacters(in: .whitespacesAndNewlines)
-        // If the entire input looks like a file path, auto-convert to attachment
-        if (text.hasPrefix("~/") || text.hasPrefix("/")) && text.hasSuffix(".md") && !text.contains("\n") {
-            let expanded = (text as NSString).expandingTildeInPath
-            let icon = FileManager.default.fileExists(atPath: expanded) ? "doc.text" : "doc"
-            attachedFiles.append(AttachedFile(name: (text as NSString).lastPathComponent, path: text, icon: icon))
-            pasteText = ""
-        }
+        guard (text.hasPrefix("~/") || text.hasPrefix("/")), !text.contains("\n") else { return }
+        let knownExts = ["md","pdf","png","jpg","jpeg","gif","webp","heic","txt"]
+        let ext = (text as NSString).pathExtension.lowercased()
+        guard knownExts.contains(ext) else { return }
+
+        let expanded = (text as NSString).expandingTildeInPath
+        let icon = ["png","jpg","jpeg","gif","webp","heic"].contains(ext) ? "photo" :
+                   ext == "pdf" ? "doc.richtext" : "doc.text"
+        attachedFiles.append(AttachedFile(name: (text as NSString).lastPathComponent, path: text, icon: icon))
+        pasteText = ""
     }
 
     func pickAnyFile() {
@@ -839,10 +893,11 @@ class AppState: ObservableObject {
                 let recordId = item["id"] as? String ?? UUID().uuidString
                 let isoFmt = ISO8601DateFormatter()
                 let createdAt = isoFmt.date(from: ts) ?? Date.distantPast
+                let attachments = extractFilePaths(from: text).map { MessageAttachment.detect(path: $0) }
                 return VoxMessage(
                     id: recordId, text: text, time: String(ts.dropFirst(11).prefix(5)),
                     role: role, latencyMs: item["latency_ms"] as? Int ?? 0,
-                    createdAt: createdAt
+                    createdAt: createdAt, attachments: attachments
                 )
             }
             totalRecordings = messages.count
@@ -1022,7 +1077,8 @@ class AppState: ObservableObject {
 
     private func appendMessage(text: String, role: MessageRole, latency: Int) {
         let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
-        messages.append(VoxMessage(id: UUID().uuidString, text: text, time: fmt.string(from: Date()), role: role, latencyMs: latency, createdAt: Date()))
+        let attachments = extractFilePaths(from: text).map { MessageAttachment.detect(path: $0) }
+        messages.append(VoxMessage(id: UUID().uuidString, text: text, time: fmt.string(from: Date()), role: role, latencyMs: latency, createdAt: Date(), attachments: attachments))
         totalRecordings += 1; lastError = nil
         // Update agent count
         if let idx = agents.firstIndex(where: { $0.id == selectedAgent }) {

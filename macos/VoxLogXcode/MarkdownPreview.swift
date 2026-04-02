@@ -135,11 +135,12 @@ struct MarkdownText: View {
 // MARK: - File Path Detection
 
 func extractFilePaths(from text: String) -> [String] {
-    // Match common file paths: ~/..., /Users/..., ~/.gstack/...
+    // Match file paths: .md, .pdf, .png, .jpg, .jpeg, .gif, .txt
+    let exts = "md|pdf|png|jpg|jpeg|gif|webp|heic|txt"
     let patterns = [
-        "~[/\\w.-]+\\.md",
-        "/Users/[/\\w.-]+\\.md",
-        "/[\\w.-]+(?:/[\\w.-]+)+\\.md",
+        "~[/\\w.-]+\\.(?:\(exts))",
+        "/Users/[/\\w.-]+\\.(?:\(exts))",
+        "/[\\w.-]+(?:/[\\w.-]+)+\\.(?:\(exts))",
     ]
 
     var paths: [String] = []

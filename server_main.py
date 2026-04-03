@@ -1,7 +1,7 @@
 """Entry point for PyInstaller — single binary server."""
 import uvicorn
 import structlog
-from core.config import get_config
+from runtime.models.config import get_config
 
 def main():
     config = get_config()
@@ -12,7 +12,7 @@ def main():
             structlog.processors.JSONRenderer(),
         ],
     )
-    uvicorn.run("server.app:app", host=config.host, port=config.port, log_level="info")
+    uvicorn.run("apps.desktop.server:app", host=config.host, port=config.port, log_level="info")
 
 if __name__ == "__main__":
     main()

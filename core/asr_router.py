@@ -166,9 +166,13 @@ class LocalWhisper:
 def _get_client(provider: ASRProvider, config: VoxLogConfig) -> ASRProviderClient:
     if provider == ASRProvider.QWEN:
         import os
-        # Region: us (default for home/US exit), cn (office/China), intl
         region = os.getenv("DASHSCOPE_REGION", "us")
-        return QwenASR(config.dashscope_api_key, region=region)
+        # Use CN key for CN region, US key for US/intl
+        if region == "cn" and config.dashscope_api_key_cn:
+            key = config.dashscope_api_key_cn
+        else:
+            key = config.dashscope_api_key
+        return QwenASR(key, region=region)
     elif provider == ASRProvider.OPENAI_WHISPER:
         return OpenAIWhisper(config.openai_api_key)
     elif provider == ASRProvider.LOCAL_WHISPER:
@@ -188,12 +192,10 @@ def _resolve_override(override: str | None, config: VoxLogConfig) -> tuple[ASRPr
     }
     if override and override in mapping:
         main = mapping[override]
-        # Set region for Qwen
+        import os
         if override == "qwen-cn":
-            import os
             os.environ["DASHSCOPE_REGION"] = "cn"
         elif override == "qwen-us":
-            import os
             os.environ["DASHSCOPE_REGION"] = "us"
         # Pick a different fallback
         fallback = ASRProvider.OPENAI_WHISPER if main != ASRProvider.OPENAI_WHISPER else ASRProvider.QWEN

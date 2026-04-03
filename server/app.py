@@ -61,7 +61,8 @@ async def lifespan(app: FastAPI):
         from core.network_detect import detect_environment
         detected = await detect_environment()
         _config.switch_env(detected)
-        logger.info("server.auto_env", env=detected.value)
+        os.environ["DASHSCOPE_REGION"] = "cn" if detected == Environment.OFFICE else "us"
+        logger.info("server.auto_env", env=detected.value, region=os.environ["DASHSCOPE_REGION"])
 
     logger.info("server.started", host=_config.host, port=_config.port, env=_config.env.value)
 
@@ -403,13 +404,15 @@ async def switch_asr_endpoint(
     global _asr_override
     if model == "auto":
         _asr_override = None
-        # Re-detect network
         from core.network_detect import detect_environment, invalidate_cache
         invalidate_cache()
         detected = await detect_environment()
         assert _config
         _config.switch_env(detected)
-        logger.info("asr.switch", model="auto", env=detected.value)
+        # Set region based on detected env
+        import os
+        os.environ["DASHSCOPE_REGION"] = "cn" if detected == Environment.OFFICE else "us"
+        logger.info("asr.switch", model="auto", env=detected.value, region=os.environ["DASHSCOPE_REGION"])
     else:
         _asr_override = model
         logger.info("asr.switch", model=model)

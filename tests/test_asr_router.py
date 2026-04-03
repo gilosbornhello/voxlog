@@ -93,4 +93,4 @@ class TestASRRouter:
             assert result.raw_text == "office result"
             # First call should be for QWEN (main in office env)
             first_call_provider = mock_get.call_args_list[0][0][0]
-            assert first_call_provider == ASRProvider.SILICONFLOW
+            assert first_call_provider == ASRProvider.QWEN

@@ -92,6 +92,40 @@ class OpenAIWhisperSTT:
             return resp.json()["text"]
 
 
+class LocalWhisperCpp:
+    """whisper.cpp via pywhispercpp — runs on Apple Silicon GPU.
+
+    Tier 1: lowest latency, zero network, zero cost.
+    Model loaded once, reused for all subsequent calls.
+    """
+
+    _model = None
+    _model_name = "base"  # tiny(39MB) / base(142MB) / small(466MB) / medium(1.5GB)
+
+    @classmethod
+    def ensure_model(cls, model_name: str = "base"):
+        if cls._model is None or cls._model_name != model_name:
+            from pywhispercpp.model import Model
+            cls._model = Model(model_name, print_progress=False)
+            cls._model_name = model_name
+            logger.info("whisper_cpp.loaded", model=model_name)
+
+    def __init__(self, model_name: str = "base"):
+        self.model_name = model_name
+
+    async def transcribe(self, audio: bytes) -> str:
+        import tempfile
+        LocalWhisperCpp.ensure_model(self.model_name)
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as f:
+            f.write(audio)
+            f.flush()
+            segments = await asyncio.get_event_loop().run_in_executor(
+                None, LocalWhisperCpp._model.transcribe, f.name
+            )
+            return " ".join(s.text.strip() for s in segments if s.text.strip())
+
+
 class SiliconFlowSTT:
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -118,6 +152,12 @@ class SiliconFlowSTT:
 
 def _get_provider(name: str, config: VoxLogConfig) -> STTProvider:
     key = config.get_stt_key(name)
+    if name == "local" or name == "whisper-cpp":
+        return LocalWhisperCpp(model_name="base")
+    if name == "local-tiny":
+        return LocalWhisperCpp(model_name="tiny")
+    if name == "local-small":
+        return LocalWhisperCpp(model_name="small")
     if "qwen-cn" in name:
         return QwenSTT(key, region="cn")
     if "qwen-us" in name:

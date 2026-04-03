@@ -874,6 +874,10 @@ struct InputBar: View {
                         Button("🌐 OpenAI Whisper — whisper-1") { appState.switchASR("openai") }
                         Button("🇨🇳 SiliconFlow — SenseVoiceSmall") { appState.switchASR("siliconflow") }
                         Divider()
+                        Text("Local (no network)").font(.caption)
+                        Button("💻 whisper.cpp base (142MB)") { appState.switchASR("local") }
+                        Button("💻 whisper.cpp tiny (39MB, fastest)") { appState.switchASR("local-tiny") }
+                        Divider()
                         Text("Current: \(appState.currentASRLabel)").font(.caption)
                     } label: {
                         Text(appState.currentASRShort)
@@ -1320,6 +1324,8 @@ class AppState: ObservableObject {
             "qwen-cn": ("Qwen ASR (CN) — qwen3-asr-flash", "Qwen CN"),
             "openai": ("OpenAI Whisper — whisper-1", "Whisper"),
             "siliconflow": ("SiliconFlow — SenseVoiceSmall", "SenseVoice"),
+            "local": ("whisper.cpp base — local", "Local"),
+            "local-tiny": ("whisper.cpp tiny — local", "Local⚡"),
             "auto": ("Auto-detect", "Auto"),
         ]
         if let (full, short) = labels[model] {

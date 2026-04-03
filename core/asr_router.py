@@ -178,12 +178,33 @@ def _get_client(provider: ASRProvider, config: VoxLogConfig) -> ASRProviderClien
     raise ASRError(f"Unknown ASR provider: {provider}")
 
 
-async def transcribe(audio: bytes, config: VoxLogConfig) -> TranscribeResult:
+def _resolve_override(override: str | None, config: VoxLogConfig) -> tuple[ASRProvider, ASRProvider]:
+    """Resolve ASR override string to provider + fallback."""
+    mapping = {
+        "qwen-us": ASRProvider.QWEN,
+        "qwen-cn": ASRProvider.QWEN,
+        "openai": ASRProvider.OPENAI_WHISPER,
+        "siliconflow": ASRProvider.SILICONFLOW,
+    }
+    if override and override in mapping:
+        main = mapping[override]
+        # Set region for Qwen
+        if override == "qwen-cn":
+            import os
+            os.environ["DASHSCOPE_REGION"] = "cn"
+        elif override == "qwen-us":
+            import os
+            os.environ["DASHSCOPE_REGION"] = "us"
+        # Pick a different fallback
+        fallback = ASRProvider.OPENAI_WHISPER if main != ASRProvider.OPENAI_WHISPER else ASRProvider.QWEN
+        return main, fallback
+    return config.route.asr.main, config.route.asr.fallback
+
+
+async def transcribe(audio: bytes, config: VoxLogConfig, asr_override: str | None = None) -> TranscribeResult:
     """Transcribe audio with failover. Main -> fallback -> error."""
-    route = config.route
-    main_provider = route.asr.main
-    fallback_provider = route.asr.fallback
-    timeout = route.asr.timeout_seconds
+    main_provider, fallback_provider = _resolve_override(asr_override, config)
+    timeout = config.route.asr.timeout_seconds
 
     # Try main provider
     start = time.monotonic()

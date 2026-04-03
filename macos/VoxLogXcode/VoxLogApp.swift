@@ -867,6 +867,8 @@ struct InputBar: View {
                     // ASR model selector (left of mic)
                     Menu {
                         Text("Speech Recognition").font(.caption)
+                        Button("🔄 Auto-detect (recommended)") { appState.switchASR("auto") }
+                        Divider()
                         Button("🇺🇸 Qwen ASR (US) — qwen3-asr-flash-us") { appState.switchASR("qwen-us") }
                         Button("🇨🇳 Qwen ASR (CN) — qwen3-asr-flash") { appState.switchASR("qwen-cn") }
                         Button("🌐 OpenAI Whisper — whisper-1") { appState.switchASR("openai") }
@@ -1056,9 +1058,18 @@ class AppState: ObservableObject {
            let env = json["env"] as? String,
            let route = json["route"] as? [String: Any] {
             envLabel = env == "home" ? "Home" : "Office"
-            let asr = (route["asr_main"] as? String ?? "").replacingOccurrences(of: "_", with: " ")
+            let asr = route["asr_main"] as? String ?? ""
             let llm = (route["llm_main"] as? String ?? "").replacingOccurrences(of: "_", with: " ")
             modelLabel = "\(asr) · \(llm)"
+
+            // Set ASR label based on detected env
+            if asr.contains("us") {
+                currentASRLabel = "Qwen ASR (US) — \(asr)"
+                currentASRShort = "Qwen US"
+            } else if asr.contains("qwen") {
+                currentASRLabel = "Qwen ASR (CN) — \(asr)"
+                currentASRShort = "Qwen CN"
+            }
         }
     }
 
@@ -1309,12 +1320,22 @@ class AppState: ObservableObject {
             "qwen-cn": ("Qwen ASR (CN) — qwen3-asr-flash", "Qwen CN"),
             "openai": ("OpenAI Whisper — whisper-1", "Whisper"),
             "siliconflow": ("SiliconFlow — SenseVoiceSmall", "SenseVoice"),
+            "auto": ("Auto-detect", "Auto"),
         ]
         if let (full, short) = labels[model] {
             currentASRLabel = full
             currentASRShort = short
         }
-        // TODO: send to server to actually switch the ASR provider at runtime
+        // Actually switch on server
+        Task {
+            let url = URL(string: "http://127.0.0.1:7890/v1/asr/switch")!
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            req.httpBody = "model=\(model)".data(using: .utf8)
+            _ = try? await URLSession.shared.data(for: req)
+        }
     }
 
     // MARK: - Obsidian Sync

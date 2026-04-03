@@ -41,6 +41,7 @@ logger = structlog.get_logger()
 _config: VoxLogConfig | None = None
 _archive: Archive | None = None
 _dictionary: Dictionary | None = None
+_asr_override: str | None = None  # If set, overrides the route table ASR selection
 
 
 @asynccontextmanager
@@ -133,9 +134,9 @@ async def voice_endpoint(
         _config.switch_env(environment)
 
     try:
-        # ASR
+        # ASR (use override if set)
         try:
-            asr_result = await transcribe(audio_bytes, _config)
+            asr_result = await transcribe(audio_bytes, _config, asr_override=_asr_override)
         except ASRError as e:
             raise HTTPException(status_code=502, detail=str(e))
 
@@ -393,22 +394,47 @@ async def switch_env_endpoint(
     }}
 
 
+@app.post("/v1/asr/switch")
+async def switch_asr_endpoint(
+    model: str = Form(...),
+    _auth: None = Depends(verify_token),
+) -> dict:
+    """Switch ASR model. Model values: qwen-us, qwen-cn, openai, siliconflow, auto."""
+    global _asr_override
+    if model == "auto":
+        _asr_override = None
+        # Re-detect network
+        from core.network_detect import detect_environment, invalidate_cache
+        invalidate_cache()
+        detected = await detect_environment()
+        assert _config
+        _config.switch_env(detected)
+        logger.info("asr.switch", model="auto", env=detected.value)
+    else:
+        _asr_override = model
+        logger.info("asr.switch", model=model)
+
+    return {"model": _asr_override or "auto", "env": _config.env.value if _config else "unknown"}
+
+
 @app.get("/v1/detect")
 async def detect_env_endpoint(_auth: None = Depends(verify_token)) -> dict:
     """Auto-detect network environment and switch."""
+    global _asr_override
     assert _config
     from core.network_detect import detect_environment, invalidate_cache
     invalidate_cache()
     detected = await detect_environment()
     _config.switch_env(detected)
+    _asr_override = None  # Reset override on re-detect
+
     import os
     region = os.getenv("DASHSCOPE_REGION", "us")
     asr_main = _config.route.asr.main.value
-    # Show specific model version for Qwen ASR
     asr_detail = asr_main
     if asr_main == "qwen":
         asr_detail = f"qwen3-asr-flash-{region}" if region != "cn" else "qwen3-asr-flash"
-    return {"env": detected.value, "route": {
+    return {"env": detected.value, "asr_override": _asr_override, "route": {
         "asr_main": asr_detail,
         "asr_fallback": _config.route.asr.fallback.value,
         "llm_main": _config.route.llm.main.value,

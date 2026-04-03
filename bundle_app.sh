@@ -75,6 +75,13 @@ VOXLOG_API_TOKEN=voxlog-dev-token
 VOXLOG_ENV=home
 ENVEOF
 
+# Load API keys from .env into environment
+if [ -f "$HOME/.voxlog/.env" ]; then
+    set -a
+    source "$HOME/.voxlog/.env"
+    set +a
+fi
+
 # Start server (single binary, no Python needed)
 "$DIR/MacOS/voxlog-server" > "$HOME/.voxlog/logs/server.log" 2>&1 &
 SERVER_PID=$!

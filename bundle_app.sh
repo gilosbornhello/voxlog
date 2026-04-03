@@ -82,19 +82,28 @@ if [ -f "$HOME/.voxlog/.env" ]; then
     set +a
 fi
 
-# Start server (single binary, no Python needed)
-"$DIR/MacOS/voxlog-server" > "$HOME/.voxlog/logs/server.log" 2>&1 &
-SERVER_PID=$!
+# Check if server already running
+if curl -s http://127.0.0.1:7890/health > /dev/null 2>&1; then
+    SERVER_PID=""
+else
+    # Kill any stale process on port 7890
+    lsof -ti :7890 2>/dev/null | xargs kill -9 2>/dev/null
+    sleep 1
 
-for i in $(seq 1 15); do
-    curl -s http://127.0.0.1:7890/health > /dev/null 2>&1 && break
-    sleep 0.5
-done
+    # Start server
+    "$DIR/MacOS/voxlog-server" > "$HOME/.voxlog/logs/server.log" 2>&1 &
+    SERVER_PID=$!
+
+    for i in $(seq 1 15); do
+        curl -s http://127.0.0.1:7890/health > /dev/null 2>&1 && break
+        sleep 0.5
+    done
+fi
 
 export VOXLOG_ROOT="$DIR/Resources"
 "$DIR/MacOS/VoxLog-ui"
 
-kill $SERVER_PID 2>/dev/null
+[ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null
 LAUNCHER
 chmod +x "$MACOS_DIR/VoxLog"
 

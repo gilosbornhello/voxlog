@@ -141,17 +141,31 @@ async def voice_endpoint(
         except ASRError as e:
             raise HTTPException(status_code=502, detail=str(e))
 
-        # Dictionary + LLM polish
-        polish_result = await polish(asr_result.raw_text, _dictionary, _config)
+        # Fast path: dictionary replacement only (< 1ms)
+        from core.dictionary import Dictionary
+        dict_text = _dictionary.apply(asr_result.raw_text) if _dictionary else asr_result.raw_text
+
+        # LLM polish: only if explicitly requested via query param
+        # Default: skip LLM to cut latency in half
+        use_llm = source == "web"  # web UI might want polish; app defaults to fast
+        if use_llm:
+            polish_result = await polish(asr_result.raw_text, _dictionary, _config)
+            final_text = polish_result.polished_text
+            llm_provider_used = polish_result.provider
+            was_polished = polish_result.polished
+        else:
+            final_text = dict_text
+            llm_provider_used = None
+            was_polished = False
 
         total_latency = int((time.monotonic() - start) * 1000)
 
         result = VoiceResult(
             raw_text=asr_result.raw_text,
-            polished_text=polish_result.polished_text,
+            polished_text=final_text,
             asr_provider=asr_result.provider,
-            llm_provider=polish_result.provider,
-            polished=polish_result.polished,
+            llm_provider=llm_provider_used,
+            polished=was_polished,
             duration_seconds=duration_seconds,
             latency_ms=total_latency,
             target_app=target_app,

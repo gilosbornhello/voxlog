@@ -148,11 +148,13 @@ export function InputBar({ agent }: InputBarProps) {
           <div className={styles.asrMenu}>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('auto', 'Auto')}>🔄 Auto-detect</div>
             <div className={styles.asrSep} />
+            <div className={styles.asrItem} onClick={() => handleASRSwitch("qwen-local", "Qwen 0.6B")}>🧠 Qwen3-ASR 0.6B (local)</div>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-us', 'Qwen US')}>🇺🇸 Qwen ASR (US)</div>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-cn', 'Qwen CN')}>🇨🇳 Qwen ASR (CN)</div>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('openai', 'Whisper')}>🌐 OpenAI Whisper</div>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('siliconflow', 'SenseVoice')}>🇨🇳 SiliconFlow</div>
             <div className={styles.asrSep} />
+            <div className={styles.asrItem} onClick={() => handleASRSwitch("qwen-local", "Qwen 0.6B")}>🧠 Qwen3-ASR 0.6B (local)</div>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('local', 'Local')}>💻 whisper.cpp base</div>
             <div className={styles.asrItem} onClick={() => handleASRSwitch('local-tiny', 'Local⚡')}>💻 whisper.cpp tiny</div>
           </div>

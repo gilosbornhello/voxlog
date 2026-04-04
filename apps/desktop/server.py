@@ -971,3 +971,145 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# === AGENT / GROUP / TASK ===
+
+from runtime.models.agents import Agent, AgentType, Group, Task, TaskStatus, OwnerIdentity
+
+# In-memory store (persisted to JSON)
+import json as _json
+_AGENTS_PATH = Path.home() / ".voxlog2" / "agents.json"
+_GROUPS_PATH = Path.home() / ".voxlog2" / "groups.json"
+_TASKS_PATH = Path.home() / ".voxlog2" / "tasks.json"
+
+def _load_json(path: Path) -> list:
+    if path.exists():
+        return _json.loads(path.read_text())
+    return []
+
+def _save_json(path: Path, data: list):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(data, ensure_ascii=False, indent=2, default=str))
+
+
+@app.get("/v1/identity")
+async def identity_endpoint():
+    return OwnerIdentity().model_dump()
+
+
+@app.get("/v1/agents/all")
+async def all_agents_endpoint(_auth: None = Depends(verify_token)):
+    return _load_json(_AGENTS_PATH) or [
+        {"id": "claude-code", "name": "Claude Code", "emoji": "👨‍💻", "agent_type": "system_default", "parent_id": ""},
+        {"id": "osborn", "name": "Osborn", "emoji": "🧠", "agent_type": "system_default", "parent_id": ""},
+        {"id": "openclaw", "name": "OpenClaw", "emoji": "🦞", "agent_type": "system_default", "parent_id": ""},
+        {"id": "general", "name": "General", "emoji": "📝", "agent_type": "system_default", "parent_id": ""},
+    ]
+
+
+@app.post("/v1/agents/create")
+async def create_agent_endpoint(request: Request, _auth: None = Depends(verify_token)):
+    body = await request.json()
+    agents = _load_json(_AGENTS_PATH)
+    agent = Agent(name=body["name"], emoji=body.get("emoji", "🤖"),
+                  agent_type=AgentType(body.get("type", "user_created")),
+                  parent_id=body.get("parent_id", ""))
+    agents.append(agent.model_dump())
+    _save_json(_AGENTS_PATH, agents)
+    return agent.model_dump()
+
+
+@app.delete("/v1/agents/{agent_id}")
+async def delete_agent_endpoint(agent_id: str, _auth: None = Depends(verify_token)):
+    agents = _load_json(_AGENTS_PATH)
+    agents = [a for a in agents if a["id"] != agent_id]
+    _save_json(_AGENTS_PATH, agents)
+    return {"deleted": agent_id}
+
+
+@app.post("/v1/agents/{agent_id}/bind")
+async def bind_agent_endpoint(agent_id: str, request: Request, _auth: None = Depends(verify_token)):
+    """Bind an agent to a local 小龙虾 agent."""
+    body = await request.json()
+    agents = _load_json(_AGENTS_PATH)
+    for a in agents:
+        if a["id"] == agent_id:
+            a["external_system"] = body.get("external_system", "xiaolongxia_local")
+            a["external_agent_ref"] = body.get("external_agent_ref", "")
+            a["binding_status"] = "bound"
+            a["can_accept_tasks"] = body.get("can_accept_tasks", True)
+            break
+    _save_json(_AGENTS_PATH, agents)
+    return {"bound": agent_id}
+
+
+# --- Groups ---
+
+@app.get("/v1/groups")
+async def list_groups_endpoint(_auth: None = Depends(verify_token)):
+    return _load_json(_GROUPS_PATH)
+
+
+@app.post("/v1/groups/create")
+async def create_group_endpoint(request: Request, _auth: None = Depends(verify_token)):
+    body = await request.json()
+    groups = _load_json(_GROUPS_PATH)
+    group = Group(title=body["title"], emoji=body.get("emoji", "👥"),
+                  member_agent_ids=body.get("members", []))
+    groups.append(group.model_dump())
+    _save_json(_GROUPS_PATH, groups)
+    return group.model_dump()
+
+
+@app.delete("/v1/groups/{group_id}")
+async def delete_group_endpoint(group_id: str, _auth: None = Depends(verify_token)):
+    groups = _load_json(_GROUPS_PATH)
+    groups = [g for g in groups if g["id"] != group_id]
+    _save_json(_GROUPS_PATH, groups)
+    return {"deleted": group_id}
+
+
+# --- Tasks ---
+
+@app.get("/v1/tasks")
+async def list_tasks_endpoint(
+    agent: str = Query(default=""),
+    status: str = Query(default=""),
+    _auth: None = Depends(verify_token),
+):
+    tasks = _load_json(_TASKS_PATH)
+    if agent:
+        tasks = [t for t in tasks if t.get("assigned_context_id") == agent]
+    if status:
+        tasks = [t for t in tasks if t.get("status") == status]
+    return tasks
+
+
+@app.post("/v1/tasks/create")
+async def create_task_endpoint(request: Request, _auth: None = Depends(verify_token)):
+    body = await request.json()
+    tasks = _load_json(_TASKS_PATH)
+    task = Task(
+        title=body["title"],
+        description=body.get("description", ""),
+        source_message_id=body.get("source_message_id", ""),
+        assigned_context_id=body.get("assigned_to", ""),
+        priority=body.get("priority", "medium"),
+    )
+    tasks.append(task.model_dump())
+    _save_json(_TASKS_PATH, tasks)
+    return task.model_dump()
+
+
+@app.post("/v1/tasks/{task_id}/status")
+async def update_task_status_endpoint(task_id: str, request: Request, _auth: None = Depends(verify_token)):
+    body = await request.json()
+    tasks = _load_json(_TASKS_PATH)
+    for t in tasks:
+        if t["id"] == task_id:
+            t["status"] = body["status"]
+            t["updated_at"] = datetime.now(timezone.utc).isoformat()
+            break
+    _save_json(_TASKS_PATH, tasks)
+    return {"updated": task_id, "status": body["status"]}

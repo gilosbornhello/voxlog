@@ -169,6 +169,8 @@ class SiliconFlowSTT:
 def _get_provider(name: str, config: VoxLogConfig) -> STTProvider:
     key = config.get_stt_key(name)
     normalized = name.strip().lower()
+    if normalized in {"qwen-local", "qwen-0.6b"}:
+        return QwenLocalASR()
     if normalized in {"local", "whisper-cpp", "whisper.cpp", "whispercpp-local"}:
         return LocalWhisperCpp(model_name="base")
     if normalized in {"local-tiny", "whispercpp-local-tiny"}:
@@ -225,3 +227,39 @@ async def transcribe(audio: bytes, config: VoxLogConfig, override: str | None = 
     except (asyncio.TimeoutError, httpx.HTTPError, STTError) as e:
         logger.error("stt.both_fail", error=str(e)[:100])
         raise STTError(f"Both STT providers failed: {main_name}, {fallback_name}")
+
+
+class QwenLocalASR:
+    """Qwen3-ASR-0.6B running locally via qwen-asr package.
+    
+    Good for: high quality, multilingual, Chinese-English mixing
+    Bad for: latency (15s+ first inference, ~3-5s warm)
+    Best use: slow path high-quality re-transcription, or when no network
+    """
+    _model = None
+
+    @classmethod
+    def ensure_model(cls):
+        if cls._model is None:
+            import torch
+            from qwen_asr import Qwen3ASRModel
+            device = 'mps' if torch.backends.mps.is_available() else 'cpu'
+            cls._model = Qwen3ASRModel.from_pretrained(
+                'Qwen/Qwen3-ASR-0.6B',
+                dtype=torch.float32,
+                device_map=device,
+            )
+            logger.info("qwen_local.loaded", device=device)
+
+    async def transcribe(self, audio: bytes) -> str:
+        import tempfile
+        QwenLocalASR.ensure_model()
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=True) as f:
+            f.write(audio)
+            f.flush()
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, QwenLocalASR._model.transcribe, [f.name]
+            )
+            if result and len(result) > 0:
+                return result[0].text.strip()
+            return ""

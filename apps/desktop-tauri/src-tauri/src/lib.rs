@@ -20,7 +20,7 @@ pub fn run() {
                         ShortcutState::Released => "released",
                     };
                     let _ = app.emit(
-                        "voxlog://global-hotkey",
+                        "voxlog2://global-hotkey",
                         GlobalHotkeyEvent {
                             accelerator: shortcut.to_string(),
                             phase: phase.to_string(),
@@ -58,5 +58,5 @@ pub fn run() {
             commands::upload_voice,
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run VoxLog Desktop Tauri shell");
+        .expect("failed to run VoxLog2 Desktop Tauri shell");
 }

@@ -3,11 +3,11 @@
 set -euo pipefail
 
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_SOURCE="$BUNDLE_DIR/VoxLog.app"
+APP_SOURCE="$BUNDLE_DIR/VoxLog2.app"
 RUNTIME_SOURCE="$BUNDLE_DIR/runtime-bundle"
-TARGET_HOME="$HOME/.voxlog"
+TARGET_HOME="$HOME/.voxlog2"
 TARGET_RUNTIME="${VOXLOG_INSTALL_RUNTIME_DIR:-$TARGET_HOME/runtime-alpha}"
-TARGET_APP="/Applications/VoxLog.app"
+TARGET_APP="/Applications/VoxLog2.app"
 LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 BIN_DIR="$TARGET_HOME/bin"
 ENV_FILE="$TARGET_HOME/.env"
@@ -17,8 +17,8 @@ API_TS_LOG="$TARGET_HOME/api-ts.log"
 GATEWAY_LOG="$TARGET_HOME/gateway.log"
 API_TS_ENTRY_REL="services/api-ts/dist/services/api-ts/src/main.js"
 DB_FILE="$TARGET_HOME/history-alpha.db"
-BACKEND_BINARY_REL="bin/voxlog-backend"
-GATEWAY_BINARY_REL="bin/voxlog-gateway"
+BACKEND_BINARY_REL="bin/voxlog2-backend"
+GATEWAY_BINARY_REL="bin/voxlog2-gateway"
 
 require_command() {
   local command_name="$1"
@@ -61,7 +61,7 @@ fi
 if [ ! -f "$SETTINGS_FILE" ]; then
   cat > "$SETTINGS_FILE" <<JSON
 {
-  "backend_base_url": "http://127.0.0.1:7891",
+  "backend_base_url": "http://127.0.0.1:7901",
   "active_profile": "home",
   "digest_enhancement_enabled": true,
   "digest_enhancement_provider": "auto",
@@ -117,7 +117,7 @@ if [ ! -x "$TARGET_RUNTIME/$BACKEND_BINARY_REL" ] || [ ! -x "$TARGET_RUNTIME/$GA
   "$TARGET_RUNTIME/.venv/bin/pip" install --upgrade pip >/dev/null
   "$TARGET_RUNTIME/.venv/bin/pip" install -e "$TARGET_RUNTIME" >/dev/null
   BACKEND_COMMAND="\"\$ROOT_DIR/.venv/bin/python\" -m apps.desktop.server"
-  GATEWAY_COMMAND="\"\$ROOT_DIR/.venv/bin/python\" -m uvicorn apps.gateway.server:app --host 127.0.0.1 --port \"\${VOXLOG_GATEWAY_PORT:-7893}\""
+  GATEWAY_COMMAND="\"\$ROOT_DIR/.venv/bin/python\" -m uvicorn apps.gateway.server:app --host 127.0.0.1 --port \"\${VOXLOG_GATEWAY_PORT:-7903}\""
 fi
 
 cat > "$BIN_DIR/start-backend.sh" <<SH
@@ -131,10 +131,10 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 cd "\$ROOT_DIR"
-export VOXLOG_PORT="\${VOXLOG_PORT:-7892}"
+export VOXLOG_PORT="\${VOXLOG_PORT:-7902}"
 export VOXLOG_DB_PATH="$DB_FILE"
 export VOXLOG_TERMS_DIR="\$ROOT_DIR/dictionaries"
-export VOXLOG_API_TOKEN="\${VOXLOG_API_TOKEN:-voxlog-dev-token}"
+export VOXLOG_API_TOKEN="\${VOXLOG_API_TOKEN:-voxlog2-dev-token}"
 $BACKEND_COMMAND
 SH
 
@@ -159,12 +159,12 @@ if [ -f "$ENV_FILE" ]; then
   . "$ENV_FILE"
   set +a
 fi
-PY_BACKEND_URL="\${VOXLOG_PY_BACKEND_URL:-http://127.0.0.1:7892}"
+PY_BACKEND_URL="\${VOXLOG_PY_BACKEND_URL:-http://127.0.0.1:7902}"
 wait_for_backend "\${PY_BACKEND_URL}/health" 45
 cd "\$ROOT_DIR/services/api-ts"
-VOXLOG_TS_PORT="\${VOXLOG_TS_PORT:-7891}" \
+VOXLOG_TS_PORT="\${VOXLOG_TS_PORT:-7901}" \
 VOXLOG_PY_BACKEND_URL="\$PY_BACKEND_URL" \
-VOXLOG_PY_BACKEND_API_TOKEN="\${VOXLOG_PY_BACKEND_API_TOKEN:-\${VOXLOG_API_TOKEN:-voxlog-dev-token}}" \
+VOXLOG_PY_BACKEND_API_TOKEN="\${VOXLOG_PY_BACKEND_API_TOKEN:-\${VOXLOG_API_TOKEN:-voxlog2-dev-token}}" \
 "\$ROOT_DIR/bin/node" "\$ROOT_DIR/$API_TS_ENTRY_REL"
 SH
 
@@ -179,7 +179,7 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 cd "\$ROOT_DIR"
-export VOXLOG_GATEWAY_UPSTREAM_URL="\${VOXLOG_GATEWAY_UPSTREAM_URL:-http://127.0.0.1:7891}"
+export VOXLOG_GATEWAY_UPSTREAM_URL="\${VOXLOG_GATEWAY_UPSTREAM_URL:-http://127.0.0.1:7901}"
 $GATEWAY_COMMAND
 SH
 
@@ -188,13 +188,13 @@ chmod +x "$BIN_DIR/start-backend.sh" "$BIN_DIR/start-api-ts.sh" "$BIN_DIR/start-
 rm -rf "$TARGET_APP"
 cp -R "$APP_SOURCE" "$TARGET_APP"
 
-cat > "$LAUNCH_AGENTS_DIR/com.voxlog.backend.plist" <<PLIST
+cat > "$LAUNCH_AGENTS_DIR/com.voxlog2.backend.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.voxlog.backend</string>
+  <string>com.voxlog2.backend</string>
   <key>ProgramArguments</key>
   <array>
     <string>$BIN_DIR/start-backend.sh</string>
@@ -213,13 +213,13 @@ cat > "$LAUNCH_AGENTS_DIR/com.voxlog.backend.plist" <<PLIST
 </plist>
 PLIST
 
-cat > "$LAUNCH_AGENTS_DIR/com.voxlog.api-ts.plist" <<PLIST
+cat > "$LAUNCH_AGENTS_DIR/com.voxlog2.api-ts.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.voxlog.api-ts</string>
+  <string>com.voxlog2.api-ts</string>
   <key>ProgramArguments</key>
   <array>
     <string>$BIN_DIR/start-api-ts.sh</string>
@@ -238,13 +238,13 @@ cat > "$LAUNCH_AGENTS_DIR/com.voxlog.api-ts.plist" <<PLIST
 </plist>
 PLIST
 
-cat > "$LAUNCH_AGENTS_DIR/com.voxlog.gateway.plist" <<PLIST
+cat > "$LAUNCH_AGENTS_DIR/com.voxlog2.gateway.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.voxlog.gateway</string>
+  <string>com.voxlog2.gateway</string>
   <key>ProgramArguments</key>
   <array>
     <string>$BIN_DIR/start-gateway.sh</string>
@@ -303,28 +303,28 @@ start_service_now() {
 : > "$API_TS_LOG"
 : > "$GATEWAY_LOG"
 
-launch_agent_reload "com.voxlog.backend" "$LAUNCH_AGENTS_DIR/com.voxlog.backend.plist"
-launch_agent_reload "com.voxlog.api-ts" "$LAUNCH_AGENTS_DIR/com.voxlog.api-ts.plist"
-launch_agent_reload "com.voxlog.gateway" "$LAUNCH_AGENTS_DIR/com.voxlog.gateway.plist"
+launch_agent_reload "com.voxlog2.backend" "$LAUNCH_AGENTS_DIR/com.voxlog2.backend.plist"
+launch_agent_reload "com.voxlog2.api-ts" "$LAUNCH_AGENTS_DIR/com.voxlog2.api-ts.plist"
+launch_agent_reload "com.voxlog2.gateway" "$LAUNCH_AGENTS_DIR/com.voxlog2.gateway.plist"
 
-if ! health_ready "http://127.0.0.1:7892/health"; then
+if ! health_ready "http://127.0.0.1:7902/health"; then
   start_service_now "backend" "$BIN_DIR/start-backend.sh" "$BACKEND_LOG"
 fi
-wait_for_health "backend" "http://127.0.0.1:7892/health" "$BACKEND_LOG" 60
-if ! health_ready "http://127.0.0.1:7891/health"; then
+wait_for_health "backend" "http://127.0.0.1:7902/health" "$BACKEND_LOG" 60
+if ! health_ready "http://127.0.0.1:7901/health"; then
   start_service_now "api-ts" "$BIN_DIR/start-api-ts.sh" "$API_TS_LOG"
 fi
-wait_for_health "api-ts" "http://127.0.0.1:7891/health" "$API_TS_LOG" 60
-if ! health_ready "http://127.0.0.1:7893/health"; then
+wait_for_health "api-ts" "http://127.0.0.1:7901/health" "$API_TS_LOG" 60
+if ! health_ready "http://127.0.0.1:7903/health"; then
   start_service_now "gateway" "$BIN_DIR/start-gateway.sh" "$GATEWAY_LOG"
 fi
-wait_for_health "gateway" "http://127.0.0.1:7893/health" "$GATEWAY_LOG" 60
+wait_for_health "gateway" "http://127.0.0.1:7903/health" "$GATEWAY_LOG" 60
 
 if [ "${VOXLOG_AUTO_OPEN_APP:-1}" = "1" ]; then
   open "$TARGET_APP"
 fi
 
-echo "installed VoxLog to $TARGET_APP"
+echo "installed VoxLog2 to $TARGET_APP"
 echo "runtime installed to $TARGET_RUNTIME"
 echo "env file: $ENV_FILE"
 echo "settings file: $SETTINGS_FILE"

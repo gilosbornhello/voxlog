@@ -1,3 +1,3 @@
 fn main() {
-    voxlog_desktop_tauri_lib::run();
+    voxlog2_desktop_tauri_lib::run();
 }

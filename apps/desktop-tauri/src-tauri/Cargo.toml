@@ -1,8 +1,8 @@
 [package]
-name = "voxlog-desktop-tauri"
+name = "voxlog2-desktop-tauri"
 version = "0.1.0"
 edition = "2021"
-description = "Phase 0 Tauri shell for VoxLog Desktop"
+description = "Phase 0 Tauri shell for VoxLog2 Desktop"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -22,5 +22,5 @@ voxlog-stt-whispercpp = { path = "../../../crates/stt-whispercpp" }
 voxlog-input-output = { path = "../../../crates/input-output" }
 
 [lib]
-name = "voxlog_desktop_tauri_lib"
+name = "voxlog2_desktop_tauri_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]

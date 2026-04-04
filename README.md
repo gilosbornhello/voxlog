@@ -1,6 +1,6 @@
-# VoxLog
+# VoxLog2
 
-Your mouth doesn't have a save button. VoxLog gives it one.
+Your mouth doesn't have a save button. VoxLog2 gives it one.
 
 Press a hotkey, speak, and the text is pasted into any app. Every word you've ever
 spoken is saved, searchable, and exportable to your knowledge base.
@@ -17,7 +17,7 @@ Built for developers who think out loud.
 
 ## What makes it different
 
-| | VoxLog | WisprFlow / Typeless | Omi / Limitless |
+| | VoxLog2 | WisprFlow / Typeless | Omi / Limitless |
 |---|--------|---------------------|-----------------|
 | Trigger | Active (you press) | Active | Passive (always on) |
 | Archive | Yes, local | No | Yes, cloud |
@@ -25,7 +25,7 @@ Built for developers who think out loud.
 | Privacy | Local-first | Cloud | Cloud / self-host |
 | Open source | MIT | No | Omi: yes |
 
-VoxLog is the only tool that combines **active voice input** with **permanent local archive**.
+VoxLog2 is the only tool that combines **active voice input** with **permanent local archive**.
 
 ## Architecture
 
@@ -50,8 +50,8 @@ npm run build:alpha
 
 Release builds are published as two separate macOS DMGs:
 
-- `VoxLog-Alpha-arm64.dmg`
-- `VoxLog-Alpha-intel.dmg`
+- `VoxLog2-Alpha-arm64.dmg`
+- `VoxLog2-Alpha-intel.dmg`
 
 Both DMGs include the desktop app, bundled Node runtime, frozen backend binary,
 gateway binary, launch agents, and installer scripts.
@@ -60,12 +60,12 @@ gateway binary, launch agents, and installer scripts.
 
 1. Download the DMG that matches your Mac.
 2. Open the DMG.
-3. Double-click `Install VoxLog.command`.
-4. Open `VoxLog.app` from `/Applications`.
+3. Double-click `Install VoxLog2.command`.
+4. Open `VoxLog2.app` from `/Applications`.
 
 ## Configuration
 
-VoxLog supports two network environments:
+VoxLog2 supports two network environments:
 
 - **Home** (US network exit): Qwen ASR + OpenAI Whisper fallback + OpenAI GPT polish
 - **Office** (China domestic): Qwen ASR domestic + local Whisper fallback + Qwen-turbo polish
@@ -74,7 +74,7 @@ Switch environments in the menu bar app settings.
 
 ## API keys
 
-Create `~/.voxlog/.env`:
+Create `~/.voxlog2/.env`:
 
 ```
 DASHSCOPE_API_KEY=sk-xxx
@@ -87,8 +87,8 @@ VOXLOG_API_TOKEN=your-secret
 
 Push a tag like `v0.1.0` and GitHub Actions will build and upload:
 
-- `VoxLog-Alpha-arm64.dmg` on Apple Silicon runners
-- `VoxLog-Alpha-intel.dmg` on Intel runners
+- `VoxLog2-Alpha-arm64.dmg` on Apple Silicon runners
+- `VoxLog2-Alpha-intel.dmg` on Intel runners
 
 ## License
 

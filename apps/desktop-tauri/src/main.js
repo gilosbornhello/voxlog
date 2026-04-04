@@ -40,18 +40,18 @@ const storage = {
 };
 
 const STORAGE_KEYS = {
-  backendUrl: "voxlog.backendUrl",
-  hotkeyAccelerator: "voxlog.hotkeyAccelerator",
-  hotkeyEnabled: "voxlog.hotkeyEnabled",
-  targetApp: "voxlog.targetApp",
-  targetRisk: "voxlog.targetRisk",
-  sessionId: "voxlog.sessionId",
-  recordMode: "voxlog.recordMode",
-  retryProvider: "voxlog.retryProvider",
-  historyQuery: "voxlog.historyQuery",
-  historyAgent: "voxlog.historyAgent",
-  historySession: "voxlog.historySession",
-  historyCurrentOnly: "voxlog.historyCurrentOnly",
+  backendUrl: "voxlog2.backendUrl",
+  hotkeyAccelerator: "voxlog2.hotkeyAccelerator",
+  hotkeyEnabled: "voxlog2.hotkeyEnabled",
+  targetApp: "voxlog2.targetApp",
+  targetRisk: "voxlog2.targetRisk",
+  sessionId: "voxlog2.sessionId",
+  recordMode: "voxlog2.recordMode",
+  retryProvider: "voxlog2.retryProvider",
+  historyQuery: "voxlog2.historyQuery",
+  historyAgent: "voxlog2.historyAgent",
+  historySession: "voxlog2.historySession",
+  historyCurrentOnly: "voxlog2.historyCurrentOnly",
 };
 
 const elements = {
@@ -693,7 +693,7 @@ function applyHistoryItem(item) {
 
 function createSessionId() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `voxlog-${stamp}`;
+  return `voxlog2-${stamp}`;
 }
 
 function ensureSessionId() {
@@ -899,7 +899,7 @@ async function bootstrap() {
     log("Failed to load app settings.", { error: String(error) });
   }
 
-  globalHotkeyUnlisten = await listen("voxlog://global-hotkey", async (event) => {
+  globalHotkeyUnlisten = await listen("voxlog2://global-hotkey", async (event) => {
     const payload = event.payload || {};
     log("Global hotkey event.", payload);
     if (payload.phase === "pressed") {

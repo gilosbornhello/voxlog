@@ -1,10 +1,10 @@
-# VoxLog Desktop Tauri
+# VoxLog2 Desktop Tauri
 
-Phase 0 skeleton for the VoxLog desktop shell.
+Phase 0 skeleton for the VoxLog2 desktop shell.
 
 This app is the future desktop entrypoint that will replace the current
 SwiftUI/Python localhost shell with a Rust/Tauri shell plus a thin backend
-bridge to the existing VoxLog runtime.
+bridge to the existing VoxLog2 runtime.
 
 ## Phase 0 scope
 

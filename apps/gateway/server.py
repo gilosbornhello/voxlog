@@ -1,4 +1,4 @@
-"""Minimal mobile bot gateway for VoxLog."""
+"""Minimal mobile bot gateway for VoxLog2."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 
 @dataclass
 class GatewayConfig:
-    upstream_base_url: str = "http://127.0.0.1:7891"
+    upstream_base_url: str = "http://127.0.0.1:7901"
     upstream_api_token: str = ""
     gateway_api_token: str = ""
     request_timeout_seconds: float = 20.0
@@ -23,7 +23,7 @@ def load_gateway_config() -> GatewayConfig:
     import os
 
     return GatewayConfig(
-        upstream_base_url=os.getenv("VOXLOG_GATEWAY_UPSTREAM_URL", "http://127.0.0.1:7891").rstrip("/"),
+        upstream_base_url=os.getenv("VOXLOG_GATEWAY_UPSTREAM_URL", "http://127.0.0.1:7901").rstrip("/"),
         upstream_api_token=os.getenv("VOXLOG_GATEWAY_UPSTREAM_API_TOKEN", "").strip(),
         gateway_api_token=os.getenv("VOXLOG_GATEWAY_API_TOKEN", "").strip(),
         request_timeout_seconds=float(os.getenv("VOXLOG_GATEWAY_TIMEOUT_SECONDS", "20")),
@@ -36,7 +36,7 @@ def create_app(
     client_factory: Callable[[], httpx.AsyncClient] | None = None,
 ) -> FastAPI:
     gateway_config = config or load_gateway_config()
-    app = FastAPI(title="VoxLog Gateway", version="0.1.0")
+    app = FastAPI(title="VoxLog2 Gateway", version="0.1.0")
 
     async def verify_gateway_token(authorization: str | None = Header(None)) -> None:
         if not gateway_config.gateway_api_token:
@@ -136,7 +136,7 @@ def main() -> None:
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=7893,
+        port=7903,
         reload=False,
         log_level="info",
     )

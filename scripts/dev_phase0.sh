@@ -4,8 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
-TS_PORT="${VOXLOG_TS_PORT:-7891}"
-PY_PORT="${VOXLOG_PORT:-7892}"
+TS_PORT="${VOXLOG_TS_PORT:-7901}"
+PY_PORT="${VOXLOG_PORT:-7902}"
 
 if [ ! -x "$PYTHON_BIN" ]; then
   echo ".venv python not found at $PYTHON_BIN" >&2

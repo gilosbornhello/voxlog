@@ -1,4 +1,4 @@
-"""VoxLog v2 configuration — profiles, providers, routing."""
+"""VoxLog2 configuration — profiles, providers, routing."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-VOXLOG_DIR = Path.home() / ".voxlog"
+VOXLOG_DIR = Path.home() / ".voxlog2"
 VOXLOG_DIR.mkdir(parents=True, exist_ok=True)
 
 _env_path = VOXLOG_DIR / ".env"
@@ -52,7 +52,7 @@ class VoxLogConfig:
 
     # Server
     host: str = field(default_factory=lambda: os.getenv("VOXLOG_HOST", "127.0.0.1"))
-    port: int = field(default_factory=lambda: int(os.getenv("VOXLOG_PORT", "7890")))
+    port: int = field(default_factory=lambda: int(os.getenv("VOXLOG_PORT", "7902")))
     api_token: str = field(default_factory=lambda: os.getenv("VOXLOG_API_TOKEN", ""))
 
     # Paths

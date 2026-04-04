@@ -1,7 +1,7 @@
 [project]
-name = "voxlog"
+name = "voxlog2"
 version = "2.0.0"
-description = "会记录的嘴 — Your mouth doesn't have a save button. VoxLog gives it one."
+description = "会记录的嘴 — Your mouth doesn't have a save button. VoxLog2 gives it one."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
@@ -32,9 +32,9 @@ dev = [
 ]
 
 [project.scripts]
-voxlog-server = "apps.desktop.server:main"
-voxlog-gateway = "apps.gateway.server:main"
-voxlog = "cli:main"
+voxlog2-server = "apps.desktop.server:main"
+voxlog2-gateway = "apps.gateway.server:main"
+voxlog2 = "cli:main"
 
 [build-system]
 requires = ["hatchling"]

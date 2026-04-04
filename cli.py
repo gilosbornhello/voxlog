@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoxLog CLI — query your voice history from the terminal.
+"""VoxLog2 CLI — query your voice history from the terminal.
 
 Usage:
     python cli.py today                    # Today's voice log
@@ -23,7 +23,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DB_PATH = Path.home() / ".voxlog" / "history.db"
+DB_PATH = Path.home() / ".voxlog2" / "history.db"
 OBSIDIAN_VOICE_DIR = Path.home() / "obsidian-vault" / "06-osborn" / "voice-logs"
 
 

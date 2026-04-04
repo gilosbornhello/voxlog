@@ -13,7 +13,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            backend_base_url: "http://127.0.0.1:7891".to_string(),
+            backend_base_url: "http://127.0.0.1:7901".to_string(),
             api_token: None,
             local_stt_model: "base.en-q5_1".to_string(),
         }
@@ -40,7 +40,7 @@ pub struct StoredSettings {
 impl Default for StoredSettings {
     fn default() -> Self {
         Self {
-            backend_base_url: "http://127.0.0.1:7891".to_string(),
+            backend_base_url: "http://127.0.0.1:7901".to_string(),
             active_profile: "home".to_string(),
             digest_enhancement_enabled: true,
             digest_enhancement_provider: "auto".to_string(),
@@ -100,7 +100,7 @@ impl Default for AppState {
 
 pub fn settings_file_path() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
-        .join(".voxlog")
+        .join(".voxlog2")
         .join("desktop-settings.json")
 }
 

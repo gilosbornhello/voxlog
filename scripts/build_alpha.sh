@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/build"
-APP_BUNDLE="$BUILD_DIR/VoxLog.app"
-APP_BIN_RELEASE="$ROOT_DIR/apps/desktop-tauri/src-tauri/target/release/voxlog-desktop-tauri"
+APP_BUNDLE="$BUILD_DIR/VoxLog2.app"
+APP_BIN_RELEASE="$ROOT_DIR/apps/desktop-tauri/src-tauri/target/release/voxlog2-desktop-tauri"
 APP_ICON="$ROOT_DIR/apps/desktop-tauri/src-tauri/icons/icon.png"
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
 CARGO_BIN="${CARGO_BIN:-${HOME}/.cargo/bin/cargo}"
@@ -27,9 +27,9 @@ case "$RAW_ARCH" in
     ;;
 esac
 
-MACOS_DIST_DIR="$DIST_DIR/voxlog-alpha-macos-$ARCH_SLUG"
-INSTALLER_DIR="$DIST_DIR/voxlog-alpha-installer-$ARCH_SLUG"
-DMG_PATH="$DIST_DIR/VoxLog-Alpha-$ARCH_SLUG.dmg"
+MACOS_DIST_DIR="$DIST_DIR/voxlog2-alpha-macos-$ARCH_SLUG"
+INSTALLER_DIR="$DIST_DIR/voxlog2-alpha-installer-$ARCH_SLUG"
+DMG_PATH="$DIST_DIR/VoxLog2-Alpha-$ARCH_SLUG.dmg"
 RUNTIME_BUNDLE_DIR="$INSTALLER_DIR/runtime-bundle"
 
 require_command() {
@@ -88,7 +88,7 @@ mkdir -p "$PYINSTALLER_DIST_DIR"
     --workpath "$BUILD_DIR/pyinstaller-work-backend" \
     --specpath "$BUILD_DIR/pyinstaller-spec-backend" \
     --paths "$ROOT_DIR" \
-    --name voxlog-backend \
+    --name voxlog2-backend \
     --collect-all fastapi \
     --collect-all uvicorn \
     --collect-all aiosqlite \
@@ -102,7 +102,7 @@ mkdir -p "$PYINSTALLER_DIST_DIR"
     --workpath "$BUILD_DIR/pyinstaller-work-gateway" \
     --specpath "$BUILD_DIR/pyinstaller-spec-gateway" \
     --paths "$ROOT_DIR" \
-    --name voxlog-gateway \
+    --name voxlog2-gateway \
     --collect-all fastapi \
     --collect-all uvicorn \
     --collect-all httpx \
@@ -124,8 +124,8 @@ fi
 rm -rf "$APP_BUNDLE" "$MACOS_DIST_DIR" "$INSTALLER_DIR" "$DMG_PATH"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$MACOS_DIST_DIR/bin" "$RUNTIME_BUNDLE_DIR"
 
-cp "$APP_BIN_RELEASE" "$APP_BUNDLE/Contents/MacOS/VoxLog"
-chmod +x "$APP_BUNDLE/Contents/MacOS/VoxLog"
+cp "$APP_BIN_RELEASE" "$APP_BUNDLE/Contents/MacOS/VoxLog2"
+chmod +x "$APP_BUNDLE/Contents/MacOS/VoxLog2"
 
 if [ -f "$APP_ICON" ]; then
   cp "$APP_ICON" "$APP_BUNDLE/Contents/Resources/icon.png"
@@ -137,13 +137,13 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>VoxLog</string>
+  <string>VoxLog2</string>
   <key>CFBundleIdentifier</key>
-  <string>com.voxlog.desktop</string>
+  <string>com.voxlog2.desktop</string>
   <key>CFBundleName</key>
-  <string>VoxLog</string>
+  <string>VoxLog2</string>
   <key>CFBundleDisplayName</key>
-  <string>VoxLog</string>
+  <string>VoxLog2</string>
   <key>CFBundleVersion</key>
   <string>0.1.0-alpha</string>
   <key>CFBundleShortVersionString</key>
@@ -153,12 +153,12 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>VoxLog records your voice for transcription and memory capture.</string>
+  <string>VoxLog2 records your voice for transcription and memory capture.</string>
 </dict>
 </plist>
 PLIST
 
-cp -R "$APP_BUNDLE" "$MACOS_DIST_DIR/VoxLog.app"
+cp -R "$APP_BUNDLE" "$MACOS_DIST_DIR/VoxLog2.app"
 
 copy_path "$ROOT_DIR/apps/__init__.py" "$RUNTIME_BUNDLE_DIR/apps/"
 copy_path "$ROOT_DIR/apps/desktop" "$RUNTIME_BUNDLE_DIR/apps/"
@@ -178,10 +178,10 @@ copy_path "$ROOT_DIR/.env.example" "$RUNTIME_BUNDLE_DIR/"
 copy_path "$ROOT_DIR/README.md" "$RUNTIME_BUNDLE_DIR/"
 mkdir -p "$RUNTIME_BUNDLE_DIR/bin"
 cp "$NODE_BIN" "$RUNTIME_BUNDLE_DIR/bin/node"
-cp "$PYINSTALLER_DIST_DIR/voxlog-backend" "$RUNTIME_BUNDLE_DIR/bin/voxlog-backend"
-cp "$PYINSTALLER_DIST_DIR/voxlog-gateway" "$RUNTIME_BUNDLE_DIR/bin/voxlog-gateway"
+cp "$PYINSTALLER_DIST_DIR/voxlog2-backend" "$RUNTIME_BUNDLE_DIR/bin/voxlog2-backend"
+cp "$PYINSTALLER_DIST_DIR/voxlog2-gateway" "$RUNTIME_BUNDLE_DIR/bin/voxlog2-gateway"
 chmod +x "$RUNTIME_BUNDLE_DIR/bin/node"
-chmod +x "$RUNTIME_BUNDLE_DIR/bin/voxlog-backend" "$RUNTIME_BUNDLE_DIR/bin/voxlog-gateway"
+chmod +x "$RUNTIME_BUNDLE_DIR/bin/voxlog2-backend" "$RUNTIME_BUNDLE_DIR/bin/voxlog2-gateway"
 
 rm -rf "$RUNTIME_BUNDLE_DIR/apps/desktop-tauri" \
        "$RUNTIME_BUNDLE_DIR/apps/desktop/__pycache__" \
@@ -190,27 +190,27 @@ rm -rf "$RUNTIME_BUNDLE_DIR/apps/desktop-tauri" \
        "$RUNTIME_BUNDLE_DIR/memory/__pycache__" \
        "$RUNTIME_BUNDLE_DIR/integrations/__pycache__"
 
-cp -R "$APP_BUNDLE" "$INSTALLER_DIR/VoxLog.app"
-cp "$ROOT_DIR/scripts/install_from_bundle.sh" "$INSTALLER_DIR/Install VoxLog.command"
-cp "$ROOT_DIR/scripts/uninstall_installed.sh" "$INSTALLER_DIR/Uninstall VoxLog.command"
-chmod +x "$INSTALLER_DIR/Install VoxLog.command" "$INSTALLER_DIR/Uninstall VoxLog.command"
+cp -R "$APP_BUNDLE" "$INSTALLER_DIR/VoxLog2.app"
+cp "$ROOT_DIR/scripts/install_from_bundle.sh" "$INSTALLER_DIR/Install VoxLog2.command"
+cp "$ROOT_DIR/scripts/uninstall_installed.sh" "$INSTALLER_DIR/Uninstall VoxLog2.command"
+chmod +x "$INSTALLER_DIR/Install VoxLog2.command" "$INSTALLER_DIR/Uninstall VoxLog2.command"
 ln -s /Applications "$INSTALLER_DIR/Applications"
 
 cat > "$INSTALLER_DIR/README.txt" <<'TXT'
-VoxLog alpha installer
+VoxLog2 alpha installer
 
-1. Drag VoxLog.app to Applications if you want the app first
-2. Double-click "Install VoxLog.command"
+1. Drag VoxLog2.app to Applications if you want the app first
+2. Double-click "Install VoxLog2.command"
 3. Wait for the install and health check to finish
-4. Open VoxLog from /Applications
+4. Open VoxLog2 from /Applications
 
-This installer copies a local runtime bundle into ~/.voxlog/runtime-alpha,
-reuses the bundled Node runtime, sets up launch agents, and installs VoxLog.app.
+This installer copies a local runtime bundle into ~/.voxlog2/runtime-alpha,
+reuses the bundled Node runtime, sets up launch agents, and installs VoxLog2.app.
 TXT
 
-hdiutil create -volname "VoxLog Alpha" -srcfolder "$INSTALLER_DIR" -ov -format UDZO "$DMG_PATH" >/dev/null
+hdiutil create -volname "VoxLog2 Alpha" -srcfolder "$INSTALLER_DIR" -ov -format UDZO "$DMG_PATH" >/dev/null
 
-cp "$DMG_PATH" "$DIST_DIR/VoxLog-Alpha.dmg"
+cp "$DMG_PATH" "$DIST_DIR/VoxLog2-Alpha.dmg"
 
 echo "alpha app bundle ready at $MACOS_DIST_DIR"
 echo "alpha installer ready at $INSTALLER_DIR"

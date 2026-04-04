@@ -20,11 +20,11 @@ jobs:
           - runner: macos-14
             arch_name: arm64
             build_arch: arm64
-            artifact_name: VoxLog-Alpha-arm64.dmg
+            artifact_name: VoxLog2-Alpha-arm64.dmg
           - runner: macos-15-intel
             arch_name: intel
             build_arch: x86_64
-            artifact_name: VoxLog-Alpha-intel.dmg
+            artifact_name: VoxLog2-Alpha-intel.dmg
 
     steps:
       - name: Checkout

@@ -5,7 +5,7 @@ Designed to run daily via cron/launchd:
     0 2 * * * cd ~/voxlog && .venv/bin/python export_cron.py
 
 Syncs past 7 days + today. Creates per-day markdown files with
-frontmatter and a VoxLog-Index.md for navigation.
+frontmatter and a VoxLog2-Index.md for navigation.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from core.obsidian_sync import sync_recent
 
-DB_PATH = Path.home() / ".voxlog" / "history.db"
+DB_PATH = Path.home() / ".voxlog2" / "history.db"
 
 
 def main():

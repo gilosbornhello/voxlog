@@ -33,7 +33,7 @@ use crate::state::{save_stored_settings, AppState, StoredSettings};
 use voxlog_input_output::{decide_output_policy, OutputPolicyRequest, OutputStrategy, RiskLevel};
 use voxlog_stt_whispercpp::{AudioPreviewRequest, WhisperCppConfig, WhisperCppEngine};
 
-const KEYRING_SERVICE: &str = "com.voxlog.desktop";
+const KEYRING_SERVICE: &str = "com.voxlog2.desktop";
 
 fn parse_risk_level(value: &str) -> RiskLevel {
     match value.trim().to_ascii_lowercase().as_str() {

@@ -1,4 +1,4 @@
-"""Environment-aware configuration for VoxLog.
+"""Environment-aware configuration for VoxLog2.
 
 Two network environments with different optimal ASR/LLM providers:
 - Home (US exit via VPN router): Qwen ASR main + OpenAI Whisper fallback
@@ -15,10 +15,10 @@ from dotenv import load_dotenv
 
 from core.models import ASRProvider, Environment, LLMProvider
 
-VOXLOG_DIR = Path.home() / ".voxlog"
+VOXLOG_DIR = Path.home() / ".voxlog2"
 VOXLOG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Load .env from ~/.voxlog/.env
+# Load .env from ~/.voxlog2/.env
 _env_path = VOXLOG_DIR / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
@@ -79,7 +79,7 @@ class VoxLogConfig:
     )
     log_dir: Path = field(default_factory=lambda: VOXLOG_DIR / "logs")
     host: str = "127.0.0.1"
-    port: int = 7890
+    port: int = 7902
     max_audio_seconds: int = 600  # 10 minutes max
 
     @property

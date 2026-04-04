@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
     # Corrector (load three dictionary layers)
     _corrector = Corrector()
     dict_dir = _config.terms_dir
-    personal = Path.home() / ".voxlog" / "terms.json"
+    personal = Path.home() / ".voxlog2" / "terms.json"
     _corrector.load(
         dict_dir / "base.json",
         dict_dir / "technical.json",
@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     logger.info("server.stopped")
 
 
-app = FastAPI(title="VoxLog", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="VoxLog2", version="2.0.0", lifespan=lifespan)
 
 
 def verify_token(authorization: str | None = Header(None)) -> None:
@@ -121,7 +121,7 @@ def verify_token(authorization: str | None = Header(None)) -> None:
 
 
 def _terms_path() -> Path:
-    path = Path.home() / ".voxlog" / "terms.json"
+    path = Path.home() / ".voxlog2" / "terms.json"
     if path.exists():
         return path
     assert _config

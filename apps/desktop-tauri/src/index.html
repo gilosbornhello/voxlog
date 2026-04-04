@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VoxLog Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">VoxLog Phase 0</p>
+        <h1>Desktop Tauri Shell</h1>
+        <p class="lede">
+          This shell is wired to the new TS service layer and already speaks the
+          recent, retry, mode, voice, and output contracts end to end.
+        </p>
+      </section>
+
+      <section id="onboarding-panel" class="panel onboarding-panel hidden">
+        <div class="panel-header">
+          <h2>First Launch</h2>
+          <span id="onboarding-status" class="badge warn">Setup Needed</span>
+        </div>
+        <p class="subtle-copy">
+          Configure backend access, choose a profile, add at least one provider key, then complete setup.
+        </p>
+        <div id="onboarding-checks" class="settings-checks"></div>
+        <div class="actions">
+          <button id="complete-onboarding" class="button">Complete Setup</button>
+        </div>
+      </section>
+
+      <section class="panel settings">
+        <div class="panel-header">
+          <h2>Backend Bridge</h2>
+          <div class="status-cluster">
+            <span id="provider-status" class="badge neutral">Providers Unknown</span>
+            <span id="hotkey-status" class="badge neutral">Hotkey Idle</span>
+            <span id="bridge-status" class="badge neutral">Idle</span>
+          </div>
+        </div>
+        <label class="field">
+          <span>Backend Base URL</span>
+          <div class="row">
+            <input id="backend-url" type="text" placeholder="http://127.0.0.1:7890" />
+            <button id="save-backend" class="button secondary">Save</button>
+          </div>
+        </label>
+        <div class="form-grid hotkey-grid">
+          <label class="field">
+            <span>Global Hotkey</span>
+            <input id="hotkey-accelerator" type="text" placeholder="CommandOrControl+Shift+Space" />
+          </label>
+          <label class="field toggle-field">
+            <span>Enable Global Hotkey</span>
+            <div class="toggle-row">
+              <input id="hotkey-enabled" type="checkbox" />
+              <button id="save-hotkey" class="button secondary">Apply</button>
+            </div>
+          </label>
+        </div>
+        <div class="row">
+          <button id="refresh-recent" class="button">Refresh Recent</button>
+          <button id="refresh-health" class="button secondary">Refresh Health</button>
+        </div>
+      </section>
+
+      <section class="panel provider-settings">
+        <div class="panel-header">
+          <h2>Provider Settings</h2>
+          <span id="settings-status" class="badge neutral">Not Saved</span>
+        </div>
+        <div id="provider-recommendation" class="empty compact-empty">
+          Connection test will recommend the best STT route for this profile.
+        </div>
+        <div class="form-grid compact">
+          <label class="field">
+            <span>Backend API Token</span>
+            <input id="backend-api-token" type="password" placeholder="optional bearer token" />
+          </label>
+          <label class="field">
+            <span>Active Profile</span>
+            <select id="active-profile">
+              <option value="home">home</option>
+              <option value="office">office</option>
+            </select>
+          </label>
+        </div>
+        <div id="profile-summary" class="empty compact-empty">
+          Select a profile to inspect its STT and LLM routing.
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>DashScope US Key</span>
+            <input id="dashscope-key-us" type="password" placeholder="stored securely if provided" />
+          </label>
+          <label class="field">
+            <span>DashScope CN Key</span>
+            <input id="dashscope-key-cn" type="password" placeholder="stored securely if provided" />
+          </label>
+          <label class="field">
+            <span>OpenAI Key</span>
+            <input id="openai-key" type="password" placeholder="stored securely if provided" />
+          </label>
+        </div>
+        <div class="form-grid compact">
+          <label class="field">
+            <span>SiliconFlow Key</span>
+            <input id="siliconflow-key" type="password" placeholder="stored securely if provided" />
+          </label>
+          <label class="field settings-flags">
+            <span>Stored Secrets</span>
+            <div id="provider-flags" class="history-item-meta"></div>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="save-settings" class="button">Save Settings</button>
+          <button id="sync-settings" class="button secondary">Sync Providers</button>
+          <button id="test-settings" class="button secondary">Test Connection</button>
+        </div>
+        <div class="form-grid compact">
+          <label class="field toggle-field">
+            <span>Digest Enhancement</span>
+            <div class="toggle-row">
+              <input id="digest-enhancement-enabled" type="checkbox" checked />
+            </div>
+          </label>
+          <label class="field">
+            <span>Digest Enhancer</span>
+            <select id="digest-enhancement-provider">
+              <option value="auto">auto</option>
+              <option value="openai">openai</option>
+              <option value="qwen">qwen</option>
+              <option value="ollama">ollama</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          <span>Obsidian Vault Path</span>
+          <input id="obsidian-vault-dir" type="text" placeholder="/Users/you/Documents/ObsidianVault" />
+        </label>
+        <label class="field">
+          <span>AI Mate Memory Path</span>
+          <input id="ai-mate-memory-dir" type="text" placeholder="/Users/you/Documents/ai-mate-memory" />
+        </label>
+        <div class="form-grid compact">
+          <label class="field">
+            <span>Never Archive Apps</span>
+            <textarea id="never-archive-apps" rows="4" placeholder="one app match per line"></textarea>
+          </label>
+          <label class="field">
+            <span>Fast Path Only Apps</span>
+            <textarea id="fast-path-only-apps" rows="4" placeholder="one app match per line"></textarea>
+          </label>
+        </div>
+        <label class="field">
+          <span>Disable Direct Typing Apps</span>
+          <textarea id="disable-direct-typing-apps" rows="4" placeholder="one app match per line"></textarea>
+        </label>
+        <div id="settings-checks" class="settings-checks hidden"></div>
+      </section>
+
+      <section class="panel recorder">
+        <div class="panel-header">
+          <h2>Push To Talk</h2>
+          <div class="status-cluster">
+            <span id="permission-status" class="badge neutral">Mic Unknown</span>
+            <span id="recording-status" class="badge neutral">Idle</span>
+          </div>
+        </div>
+        <p class="subtle-copy">
+          Hold <kbd>Space</kbd> while this window is focused, or use the buttons below.
+          This is the Phase 0 in-window hotkey, not the final global hotkey layer.
+        </p>
+        <div class="form-grid">
+          <label class="field">
+            <span>Target App</span>
+            <input id="target-app" type="text" value="Cursor" />
+          </label>
+          <label class="field">
+            <span>Target Risk</span>
+            <select id="target-risk">
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Session ID</span>
+            <div class="row">
+              <input id="session-id" type="text" placeholder="optional-session-id" />
+              <button id="new-session" class="button secondary">New Session</button>
+            </div>
+          </label>
+          <label class="field">
+            <span>Record Mode</span>
+            <select id="record-mode">
+              <option value="normal">normal</option>
+              <option value="private">private</option>
+              <option value="ephemeral">ephemeral</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="refresh-permissions" class="button secondary">Refresh Mic</button>
+          <button id="start-recording" class="button">Start Recording</button>
+          <button id="stop-recording" class="button secondary">Stop & Upload</button>
+        </div>
+      </section>
+
+      <section class="panel transcript-panel">
+        <div class="panel-header">
+          <h2>Local Transcript</h2>
+          <span id="transcript-status" class="badge neutral">Idle</span>
+        </div>
+        <div class="meta-grid">
+          <div>
+            <span class="label">Provider</span>
+            <strong id="transcript-provider">whispercpp-local</strong>
+          </div>
+          <div>
+            <span class="label">Model</span>
+            <strong id="transcript-model">base.en-q5_1</strong>
+          </div>
+          <div>
+            <span class="label">Segments</span>
+            <strong id="transcript-segments">0</strong>
+          </div>
+          <div>
+            <span class="label">Output Policy</span>
+            <strong id="output-policy-strategy">paste</strong>
+          </div>
+        </div>
+        <div class="text-block">
+          <span class="label">Partial Transcript</span>
+          <p id="partial-transcript">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Final Transcript Hint</span>
+          <p id="final-transcript">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Output Policy</span>
+          <p id="output-policy-reason">Low-risk targets will prefer fast paste.</p>
+        </div>
+        <div id="policy-preview-card" class="empty hidden">
+          <div class="panel-header">
+            <h2>Preview Required</h2>
+            <span id="policy-preview-status" class="badge warn">Pending</span>
+          </div>
+          <p id="policy-preview-text" class="subtle-copy"></p>
+          <div class="actions">
+            <button id="policy-preview-send" class="button">Send Anyway</button>
+            <button id="policy-preview-cancel" class="button secondary">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Session Digest</h2>
+          <span id="digest-status" class="badge neutral">Idle</span>
+        </div>
+        <div class="actions">
+          <label class="field inline-field">
+            <span>Digest Scope</span>
+            <select id="digest-type">
+              <option value="session">session</option>
+              <option value="daily">daily</option>
+              <option value="project">project</option>
+            </select>
+          </label>
+          <label class="field inline-field">
+            <span>Digest Date</span>
+            <input id="digest-date" type="date" />
+          </label>
+          <label class="field inline-field">
+            <span>Project Key</span>
+            <input id="digest-project-key" type="text" placeholder="cursor" />
+          </label>
+          <button id="rebuild-digest" class="button secondary">Rebuild Digest</button>
+          <button id="export-obsidian" class="button secondary">Export To Obsidian</button>
+          <button id="export-ai-mate-memory" class="button secondary">Export To AI Mate Memory</button>
+          <button id="refresh-digest" class="button secondary">Refresh Digest</button>
+        </div>
+        <div class="text-block">
+          <span class="label">Summary</span>
+          <p id="digest-summary">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Intent</span>
+          <p id="digest-intent">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Suggested Tags</span>
+          <p id="digest-tags">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Mentioned Entities</span>
+          <p id="digest-entities">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Enhancer</span>
+          <p id="digest-enhancer">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Last Rebuilt</span>
+          <p id="digest-rebuilt-at">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">Last Export</span>
+          <p id="digest-export-status">(waiting)</p>
+        </div>
+        <div class="text-block subtle">
+          <span class="label">AI Mate Export</span>
+          <p id="ai-mate-export-status">(waiting)</p>
+        </div>
+      </section>
+
+      <section class="panel recent">
+        <div class="panel-header">
+          <h2>Recent Utterance</h2>
+          <span id="recent-status" class="badge neutral">Waiting</span>
+        </div>
+        <div id="recent-empty" class="empty">
+          No recent utterance yet. Trigger the current Python backend and refresh here.
+        </div>
+        <div id="recent-card" class="recent-card hidden">
+          <div class="meta-grid">
+            <div>
+              <span class="label">App</span>
+              <strong id="recent-app">-</strong>
+            </div>
+            <div>
+              <span class="label">Risk</span>
+              <strong id="recent-risk">-</strong>
+            </div>
+            <div>
+              <span class="label">Provider</span>
+              <strong id="recent-provider">-</strong>
+            </div>
+            <div>
+              <span class="label">Confidence</span>
+              <strong id="recent-confidence">-</strong>
+            </div>
+          </div>
+
+          <div class="text-block">
+            <span class="label">Display Text</span>
+            <p id="recent-display"></p>
+          </div>
+
+          <div class="text-block subtle">
+            <span class="label">Raw Text</span>
+            <p id="recent-raw"></p>
+          </div>
+
+          <div class="text-block subtle">
+            <span class="label">Utterance / Output</span>
+            <p id="recent-ids"></p>
+          </div>
+
+          <div class="form-grid compact">
+            <label class="field">
+              <span>Retry Provider</span>
+              <input id="retry-provider" type="text" placeholder="leave blank for default" />
+            </label>
+            <label class="field">
+              <span>Change Mode</span>
+              <select id="recent-mode-select">
+                <option value="normal">normal</option>
+                <option value="private">private</option>
+                <option value="ephemeral">ephemeral</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form-grid compact">
+            <label class="field">
+              <span>Dictionary Wrong</span>
+              <input id="dictionary-wrong" type="text" placeholder="recognized text" />
+            </label>
+            <label class="field">
+              <span>Dictionary Right</span>
+              <input id="dictionary-right" type="text" placeholder="preferred text" />
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="retry-recent" class="button">Retry</button>
+            <button id="apply-recent-mode" class="button secondary">Apply Mode</button>
+            <button id="add-dictionary" class="button secondary">Add Dictionary</button>
+            <button id="undo-output" class="button danger">Undo Output</button>
+            <button id="dismiss-recent" class="button secondary">Dismiss</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-header">
+          <h2>History</h2>
+          <span id="history-status" class="badge neutral">Idle</span>
+        </div>
+        <div class="form-grid compact">
+          <label class="field">
+            <span>Search</span>
+            <input id="history-query" type="text" placeholder="search text" />
+          </label>
+          <label class="field">
+            <span>Agent Filter</span>
+            <select id="history-agent">
+              <option value="">all agents</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-grid compact">
+          <label class="field">
+            <span>Session Filter</span>
+            <div class="row">
+              <input id="history-session" type="text" placeholder="session id" />
+              <button id="use-current-session" class="button secondary">Use Current</button>
+            </div>
+          </label>
+          <label class="field toggle-field">
+            <span>Only Current Session</span>
+            <div class="toggle-row">
+              <input id="history-current-only" type="checkbox" />
+            </div>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="refresh-history" class="button">Refresh History</button>
+        </div>
+        <div id="history-empty" class="empty">No history results yet.</div>
+        <div id="history-list" class="history-list hidden"></div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-header">
+          <h2>Activity</h2>
+        </div>
+        <pre id="activity-log" class="log"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

@@ -19,7 +19,8 @@
     "opencloude": "openclaw",
     "open cloud": "openclaw",
     "opencloud": "openclaw",
-    "openclear": "openclaw"
+    "openclear": "openclaw",
+    "嗯。": "恩。"
   },
   "preserve": [
     "OpenClaw",
@@ -43,7 +44,8 @@
     "vibe coding",
     "claude for Mac",
     "claude for mac",
-    "openclaw"
+    "openclaw",
+    "恩。"
   ],
   "format_rules": {
     "cn_en_space": true,

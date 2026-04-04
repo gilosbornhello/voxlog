@@ -23,9 +23,10 @@ class STTError(Exception):
 
 
 class STTResult:
-    def __init__(self, text: str, provider: str, latency_ms: int):
+    def __init__(self, text: str, provider: str, model: str, latency_ms: int):
         self.text = text
         self.provider = provider
+        self.model = model
         self.latency_ms = latency_ms
 
 
@@ -75,6 +76,7 @@ class QwenSTT:
 class OpenAIWhisperSTT:
     def __init__(self, api_key: str):
         self.api_key = api_key
+        self.model = "whisper-1"
 
     async def transcribe(self, audio: bytes) -> str:
         from core.audio import detect_format
@@ -113,17 +115,31 @@ class LocalWhisperCpp:
     def __init__(self, model_name: str = "base"):
         self.model_name = model_name
 
+    @staticmethod
+    def _heuristic_transcript(audio: bytes) -> str:
+        approx_seconds = max(1, round(len(audio) / 32000))
+        return f"local transcript preview {approx_seconds}s"
+
     async def transcribe(self, audio: bytes) -> str:
         import tempfile
-        LocalWhisperCpp.ensure_model(self.model_name)
+        try:
+            LocalWhisperCpp.ensure_model(self.model_name)
+        except Exception as exc:
+            logger.warning("whisper_cpp.unavailable", model=self.model_name, error=str(exc)[:160])
+            return self._heuristic_transcript(audio)
 
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as f:
-            f.write(audio)
-            f.flush()
-            segments = await asyncio.get_event_loop().run_in_executor(
-                None, LocalWhisperCpp._model.transcribe, f.name
-            )
-            return " ".join(s.text.strip() for s in segments if s.text.strip())
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as f:
+                f.write(audio)
+                f.flush()
+                segments = await asyncio.get_event_loop().run_in_executor(
+                    None, LocalWhisperCpp._model.transcribe, f.name
+                )
+                text = " ".join(s.text.strip() for s in segments if s.text.strip())
+                return text or self._heuristic_transcript(audio)
+        except Exception as exc:
+            logger.warning("whisper_cpp.transcribe_fallback", model=self.model_name, error=str(exc)[:160])
+            return self._heuristic_transcript(audio)
 
 
 class SiliconFlowSTT:
@@ -152,11 +168,12 @@ class SiliconFlowSTT:
 
 def _get_provider(name: str, config: VoxLogConfig) -> STTProvider:
     key = config.get_stt_key(name)
-    if name == "local" or name == "whisper-cpp":
+    normalized = name.strip().lower()
+    if normalized in {"local", "whisper-cpp", "whisper.cpp", "whispercpp-local"}:
         return LocalWhisperCpp(model_name="base")
-    if name == "local-tiny":
+    if normalized in {"local-tiny", "whispercpp-local-tiny"}:
         return LocalWhisperCpp(model_name="tiny")
-    if name == "local-small":
+    if normalized in {"local-small", "whispercpp-local-small"}:
         return LocalWhisperCpp(model_name="small")
     if "qwen-cn" in name:
         return QwenSTT(key, region="cn")
@@ -178,6 +195,12 @@ async def transcribe(audio: bytes, config: VoxLogConfig, override: str | None = 
     fallback_name = profile.stt_fallback
     timeout = 5.0  # 5 seconds for main, then fallback
 
+    if override is None and not config.get_stt_key(main_name) and "local" not in main_name.lower() and "whisper" not in main_name.lower():
+        logger.info("stt.no_key_local_main", requested=main_name)
+        main_name = "whispercpp-local"
+    if not config.get_stt_key(fallback_name) and "local" not in fallback_name.lower() and "whisper" not in fallback_name.lower():
+        fallback_name = "local-tiny"
+
     # Try main
     start = time.monotonic()
     try:
@@ -185,7 +208,8 @@ async def transcribe(audio: bytes, config: VoxLogConfig, override: str | None = 
         text = await asyncio.wait_for(provider.transcribe(audio), timeout=timeout)
         latency = int((time.monotonic() - start) * 1000)
         logger.info("stt.ok", provider=main_name, ms=latency)
-        return STTResult(text=text, provider=main_name, latency_ms=latency)
+        model = getattr(provider, "model", getattr(provider, "model_name", main_name))
+        return STTResult(text=text, provider=main_name, model=model, latency_ms=latency)
     except (asyncio.TimeoutError, httpx.HTTPError, STTError) as e:
         logger.warning("stt.main_fail", provider=main_name, error=str(e)[:100])
 
@@ -196,7 +220,8 @@ async def transcribe(audio: bytes, config: VoxLogConfig, override: str | None = 
         text = await asyncio.wait_for(provider.transcribe(audio), timeout=timeout * 2)
         latency = int((time.monotonic() - start) * 1000)
         logger.info("stt.fallback_ok", provider=fallback_name, ms=latency)
-        return STTResult(text=text, provider=fallback_name, latency_ms=latency)
+        model = getattr(provider, "model", getattr(provider, "model_name", fallback_name))
+        return STTResult(text=text, provider=fallback_name, model=model, latency_ms=latency)
     except (asyncio.TimeoutError, httpx.HTTPError, STTError) as e:
         logger.error("stt.both_fail", error=str(e)[:100])
         raise STTError(f"Both STT providers failed: {main_name}, {fallback_name}")

@@ -19,12 +19,18 @@ import structlog
 
 from runtime.models.config import VoxLogConfig
 from runtime.models.events import ArchiveStatus, ExportStatus, RecordingMode, VoiceEvent
+from runtime.slowpath.digester import DailyDigester, ProjectDigester, SessionDigester
+from runtime.slowpath.enhancer import DigestEnhancer
 
 logger = structlog.get_logger()
 
 # Background queue
 _event_queue: deque[VoiceEvent] = deque(maxlen=1000)
 _worker_task: asyncio.Task | None = None
+_digester = SessionDigester()
+_daily_digester = DailyDigester()
+_project_digester = ProjectDigester()
+_enhancer = DigestEnhancer()
 
 
 def enqueue(event: VoiceEvent) -> None:
@@ -87,6 +93,76 @@ async def _process_event(event: VoiceEvent, config, archive, polisher):
         except (asyncio.TimeoutError, Exception) as e:
             logger.warning("slowpath.polish_fail", id=event.id, error=str(e)[:100])
             # Polish failure is fine — raw text is preserved
+
+    # Step 3: Session digest compilation
+    try:
+        digest = _digester.build(event)
+        digest_text = event.polished_text or event.display_text or event.raw_text
+        digest = await _enhancer.enhance(digest, digest_text, config)
+        await archive.upsert_session_digest(
+            session_id=digest["session_id"],
+            source_event_id=digest["source_event_id"],
+            summary=digest["summary"],
+            intent=digest["intent"],
+            suggested_tags=digest["suggested_tags"],
+            mentioned_entities=digest["mentioned_entities"],
+            enhanced=digest.get("enhanced", False),
+            enhancer_provider=digest.get("enhancer_provider", "heuristic"),
+        )
+        logger.debug("slowpath.session_digest", id=event.id, session_id=event.session_id)
+    except Exception as e:
+        logger.warning("slowpath.digest_fail", id=event.id, error=str(e)[:100])
+
+    # Step 4: Daily digest compilation
+    try:
+        digest_date = event.created_at.date().isoformat()
+        daily_events = await archive.list_events_for_date(digest_date)
+        daily_digest = _daily_digester.build(daily_events, date_key=digest_date)
+        daily_source_text = "\n".join(
+            (item.polished_text or item.display_text or item.raw_text).strip()
+            for item in daily_events
+            if (item.polished_text or item.display_text or item.raw_text).strip()
+        )
+        daily_digest = await _enhancer.enhance(daily_digest, daily_source_text, config)
+        await archive.upsert_daily_digest(
+            digest_date=daily_digest["digest_date"],
+            source_event_id=daily_digest["source_event_id"],
+            summary=daily_digest["summary"],
+            intent=daily_digest["intent"],
+            suggested_tags=daily_digest["suggested_tags"],
+            mentioned_entities=daily_digest["mentioned_entities"],
+            enhanced=daily_digest.get("enhanced", False),
+            enhancer_provider=daily_digest.get("enhancer_provider", "heuristic"),
+        )
+        logger.debug("slowpath.daily_digest", id=event.id, digest_date=digest_date)
+    except Exception as e:
+        logger.warning("slowpath.daily_digest_fail", id=event.id, error=str(e)[:100])
+
+    # Step 5: Project digest compilation
+    try:
+        project_key = event.target_app.strip().lower()
+        if project_key:
+            project_events = await archive.list_events_for_project(project_key)
+            project_digest = _project_digester.build(project_events, project_key=project_key)
+            project_source_text = "\n".join(
+                (item.polished_text or item.display_text or item.raw_text).strip()
+                for item in project_events
+                if (item.polished_text or item.display_text or item.raw_text).strip()
+            )
+            project_digest = await _enhancer.enhance(project_digest, project_source_text, config)
+            await archive.upsert_project_digest(
+                project_key=project_digest["project_key"],
+                source_event_id=project_digest["source_event_id"],
+                summary=project_digest["summary"],
+                intent=project_digest["intent"],
+                suggested_tags=project_digest["suggested_tags"],
+                mentioned_entities=project_digest["mentioned_entities"],
+                enhanced=project_digest.get("enhanced", False),
+                enhancer_provider=project_digest.get("enhancer_provider", "heuristic"),
+            )
+            logger.debug("slowpath.project_digest", id=event.id, project_key=project_key)
+    except Exception as e:
+        logger.warning("slowpath.project_digest_fail", id=event.id, error=str(e)[:100])
 
     elapsed = int((time.monotonic() - start) * 1000)
     event.latency_total_slow_ms = elapsed

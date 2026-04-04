@@ -43,15 +43,30 @@ class VoxLogConfig:
     dashscope_key_cn: str = field(default_factory=lambda: os.getenv("DASHSCOPE_API_KEY_CN", ""))
     openai_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
     siliconflow_key: str = field(default_factory=lambda: os.getenv("SILICONFLOW_API_KEY", ""))
+    digest_enhancement_enabled: bool = field(
+        default_factory=lambda: os.getenv("VOXLOG_DIGEST_ENHANCEMENT_ENABLED", "1").lower() not in {"0", "false", "off"}
+    )
+    digest_enhancement_provider: str = field(
+        default_factory=lambda: os.getenv("VOXLOG_DIGEST_ENHANCEMENT_PROVIDER", "auto")
+    )
 
     # Server
-    host: str = "127.0.0.1"
-    port: int = 7890
+    host: str = field(default_factory=lambda: os.getenv("VOXLOG_HOST", "127.0.0.1"))
+    port: int = field(default_factory=lambda: int(os.getenv("VOXLOG_PORT", "7890")))
     api_token: str = field(default_factory=lambda: os.getenv("VOXLOG_API_TOKEN", ""))
 
     # Paths
-    db_path: Path = field(default_factory=lambda: VOXLOG_DIR / "history.db")
-    terms_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent.parent / "dictionaries")
+    db_path: Path = field(
+        default_factory=lambda: Path(os.getenv("VOXLOG_DB_PATH", str(VOXLOG_DIR / "history.db")))
+    )
+    terms_dir: Path = field(
+        default_factory=lambda: Path(
+            os.getenv(
+                "VOXLOG_TERMS_DIR",
+                str(Path(__file__).parent.parent.parent / "dictionaries"),
+            )
+        )
+    )
     log_dir: Path = field(default_factory=lambda: VOXLOG_DIR / "logs")
 
     # Limits
@@ -90,6 +105,16 @@ class VoxLogConfig:
         if "openai" in provider:
             return self.openai_key
         if "silicon" in provider:
+            return self.siliconflow_key
+        return ""
+
+    def get_llm_key(self, provider: str) -> str:
+        normalized = provider.lower()
+        if "qwen" in normalized:
+            return self.dashscope_key_cn or self.dashscope_key_us
+        if "openai" in normalized:
+            return self.openai_key
+        if "silicon" in normalized:
             return self.siliconflow_key
         return ""
 

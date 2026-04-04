@@ -44,16 +44,19 @@ class Corrector:
             except Exception as e:
                 logger.warning("corrector.load_fail", path=str(path), error=str(e))
 
-    def correct(self, text: str) -> str:
-        """Apply lightweight corrections. Must complete in <50ms."""
+    def correct_with_trace(self, text: str) -> tuple[str, list[dict[str, str]]]:
+        """Apply lightweight corrections and return the replacements made."""
         if not text:
-            return text
+            return text, []
 
         result = text
+        applied: list[dict[str, str]] = []
 
         # Step 1: Dictionary corrections (case-insensitive)
         for wrong, right in self.corrections.items():
             pattern = re.compile(re.escape(wrong), re.IGNORECASE)
+            if pattern.search(result):
+                applied.append({"from": wrong, "to": right})
             result = pattern.sub(right, result)
 
         # Step 2: Chinese-English spacing
@@ -61,4 +64,9 @@ class Corrector:
             result = re.sub(r"([\u4e00-\u9fff])([A-Za-z0-9])", r"\1 \2", result)
             result = re.sub(r"([A-Za-z0-9])([\u4e00-\u9fff])", r"\1 \2", result)
 
-        return result
+        return result, applied
+
+    def correct(self, text: str) -> str:
+        """Apply lightweight corrections. Must complete in <50ms."""
+        corrected, _ = self.correct_with_trace(text)
+        return corrected

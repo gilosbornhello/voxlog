@@ -1,8 +1,7 @@
-"""Voice event data model — the core schema for VoxLog v2.
+"""Voice event data model and event contracts for VoxLog v2.
 
-Every voice input creates a VoiceEvent that flows through:
-  Fast Path → immediate output
-  Slow Path → background enrichment
+These types are the Python-side implementation of the Phase 0 contract:
+  recording -> STT -> fastpath result -> output -> slowpath archive
 """
 
 from __future__ import annotations
@@ -30,8 +29,28 @@ class SessionType(str, Enum):
     GENERAL = "general"
 
 
+class TargetRiskLevel(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class OutputMode(str, Enum):
+    PASTE = "paste"
+    DIRECT_TYPING = "direct_typing"
+    PREVIEW_ONLY = "preview_only"
+    NONE = "none"
+
+
+class FastPathStatus(str, Enum):
+    OK = "ok"
+    NEEDS_REVIEW = "needs_review"
+    FAILED = "failed"
+
+
 class ArchiveStatus(str, Enum):
-    PENDING = "pending"         # Fast path done, slow path not started
+    SKIPPED = "skipped"         # Event intentionally not archived
+    QUEUED = "queued"           # Fast path done, slow path not started
     RAW_ONLY = "raw_only"       # Archived without polish
     POLISHED = "polished"       # LLM polish complete
     FAILED = "failed"           # Slow path failed
@@ -48,6 +67,8 @@ class VoiceEvent(BaseModel):
     """Core data model for every voice input."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    utterance_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    output_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
     # Session
     session_id: str = ""
@@ -60,6 +81,7 @@ class VoiceEvent(BaseModel):
 
     # Target
     target_app: str = ""     # frontmost app name
+    target_risk_level: TargetRiskLevel = TargetRiskLevel.LOW
 
     # Content — three versions
     raw_text: str = ""           # exact ASR output
@@ -68,9 +90,11 @@ class VoiceEvent(BaseModel):
 
     # Audio metadata
     audio_duration_ms: int = 0
+    audio_file: str = ""
 
     # Provider info
     stt_provider: str = ""
+    stt_model: str = ""
     llm_provider: str = ""
 
     # Latency
@@ -85,8 +109,12 @@ class VoiceEvent(BaseModel):
     # Privacy
     recording_mode: RecordingMode = RecordingMode.NORMAL
 
+    # Output
+    output_mode: OutputMode = OutputMode.PASTE
+    confidence: float = 0.0
+
     # Status
-    archive_status: ArchiveStatus = ArchiveStatus.PENDING
+    archive_status: ArchiveStatus = ArchiveStatus.QUEUED
     export_status: ExportStatus = ExportStatus.PENDING
 
     # Role in conversation
@@ -96,9 +124,17 @@ class VoiceEvent(BaseModel):
 class FastPathResult(BaseModel):
     """What the fast path returns to the UI immediately."""
     id: str
+    status: FastPathStatus = FastPathStatus.OK
     display_text: str
     raw_text: str
     stt_provider: str
+    stt_model: str = ""
+    target_app: str = ""
+    target_risk_level: TargetRiskLevel = TargetRiskLevel.LOW
+    should_autopaste: bool = True
+    needs_review: bool = False
+    confidence: float = 0.0
+    dictionary_applied: list[dict[str, str]] = Field(default_factory=list)
     latency_ms: int
 
 
@@ -110,3 +146,15 @@ class SlowPathUpdate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     archive_status: ArchiveStatus = ArchiveStatus.RAW_ONLY
     latency_slow_ms: int = 0
+
+
+class EventEnvelope(BaseModel):
+    """Cross-module event wrapper for desktop/runtime contracts."""
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: str
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    session_id: str = ""
+    utterance_id: str = ""
+    source: str = "runtime"
+    version: int = 1
+    payload: dict = Field(default_factory=dict)

@@ -1,0 +1,24 @@
+{
+  "name": "voxlog-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "verify:phase0": "bash ./scripts/verify_phase0.sh",
+    "smoke:phase0": "bash ./scripts/smoke_phase0.sh",
+    "build:alpha": "bash ./scripts/build_alpha.sh",
+    "build:alpha:arm64": "BUILD_ARCH=arm64 bash ./scripts/build_alpha.sh",
+    "build:alpha:intel": "BUILD_ARCH=x86_64 bash ./scripts/build_alpha.sh",
+    "install:alpha": "bash ./scripts/install_alpha.sh",
+    "uninstall:alpha": "bash ./scripts/uninstall_alpha.sh",
+    "doctor:alpha": "bash ./scripts/doctor_alpha.sh",
+    "dev:api-ts": "cd ./services/api-ts && VOXLOG_PY_BACKEND_URL=http://127.0.0.1:7892 VOXLOG_PY_BACKEND_API_TOKEN=dev-token npm run dev",
+    "dev:gateway": "cd /Users/gilbertchen/Documents/CODE/voxlog && VOXLOG_GATEWAY_UPSTREAM_URL=http://127.0.0.1:7891 python3.11 -m uvicorn apps.gateway.server:app --host 127.0.0.1 --port 7893",
+    "dev:desktop": "cd ./apps/desktop-tauri && npm run dev",
+    "dev:phase0": "bash ./scripts/dev_phase0.sh"
+  },
+  "workspaces": [
+    "apps/desktop-tauri",
+    "packages/contracts",
+    "services/api-ts"
+  ]
+}

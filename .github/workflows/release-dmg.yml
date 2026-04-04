@@ -21,7 +21,7 @@ jobs:
             arch_name: arm64
             build_arch: arm64
             artifact_name: VoxLog-Alpha-arm64.dmg
-          - runner: macos-13
+          - runner: macos-15-intel
             arch_name: intel
             build_arch: x86_64
             artifact_name: VoxLog-Alpha-intel.dmg

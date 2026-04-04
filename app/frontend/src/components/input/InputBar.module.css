@@ -116,3 +116,37 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ASR selector dropdown */
+.asrWrap {
+  position: relative;
+}
+
+.asrMenu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 100;
+}
+
+.asrItem {
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.asrItem:hover {
+  background: var(--bg-hover);
+}
+
+.asrSep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}

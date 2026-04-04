@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { getAgents } from '../../api/client'
 import styles from './Sidebar.module.css'
 
 interface Agent {
@@ -20,6 +21,7 @@ const DEFAULT_AGENTS: Agent[] = [
   { id: 'claude-mac/chat', name: 'Chat', emoji: '💬', parent: 'claude-mac', count: 0, type: 'system_default' },
   { id: 'claude-mac/cowork', name: 'Co-work', emoji: '🤝', parent: 'claude-mac', count: 0, type: 'system_default' },
   { id: 'openclaw', name: 'OpenClaw', emoji: '🦞', parent: '', count: 0, type: 'system_default' },
+  { id: 'osborn', name: 'Osborn', emoji: '🧠', parent: '', count: 0, type: 'system_default' },
   { id: 'general', name: 'General', emoji: '📝', parent: '', count: 0, type: 'system_default' },
 ]
 
@@ -29,17 +31,35 @@ interface SidebarProps {
 }
 
 export function Sidebar({ selectedAgent, onSelectAgent }: SidebarProps) {
-  const [agents] = useState<Agent[]>(DEFAULT_AGENTS)
+  const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS)
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [newEmoji, setNewEmoji] = useState('🤖')
+
+  // Load agent counts from backend
+  useEffect(() => {
+    getAgents().then(apiAgents => {
+      setAgents(prev => {
+        const updated = [...prev]
+        for (const a of apiAgents) {
+          const idx = updated.findIndex(x => x.id === a.agent)
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], count: a.count }
+          }
+        }
+        return updated
+      })
+    }).catch(() => {}) // silently fail if backend not ready
+  }, [selectedAgent])
 
   const topLevel = agents.filter(a => a.parent === '')
   const subAgents = (parentId: string) => agents.filter(a => a.parent === parentId)
 
   const handleAdd = () => {
     if (!newName.trim()) return
-    // TODO: add agent via API
+    const id = newName.toLowerCase().replace(/\s+/g, '-')
+    const emoji = newEmoji || '🤖'
+    setAgents(prev => [...prev, { id, name: newName, emoji, parent: '', count: 0, type: 'user_created' }])
     setNewName('')
     setNewEmoji('🤖')
     setShowAdd(false)
@@ -47,86 +67,54 @@ export function Sidebar({ selectedAgent, onSelectAgent }: SidebarProps) {
 
   return (
     <div className={styles.sidebar}>
-      {/* Header */}
       <div className={styles.header}>
         <span className={styles.title}>Agents</span>
         <button className={styles.addBtn} onClick={() => setShowAdd(!showAdd)}>+</button>
       </div>
 
-      {/* Add form */}
       {showAdd && (
         <div className={styles.addForm}>
-          <input
-            className={styles.emojiInput}
-            value={newEmoji}
-            onChange={e => setNewEmoji(e.target.value)}
-            maxLength={2}
-          />
-          <input
-            className={styles.nameInput}
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            placeholder="Name"
-          />
+          <input className={styles.emojiInput} value={newEmoji} onChange={e => setNewEmoji(e.target.value)} maxLength={2} />
+          <input className={styles.nameInput} value={newName} onChange={e => setNewName(e.target.value)} placeholder="Name" onKeyDown={e => e.key === 'Enter' && handleAdd()} />
           <button className={styles.addConfirm} onClick={handleAdd}>Add</button>
         </div>
       )}
 
-      {/* Agent list */}
       <div className={styles.list}>
         {topLevel.map(agent => (
           <div key={agent.id}>
-            <AgentRow
-              agent={agent}
-              selected={agent.id === selectedAgent}
+            <div
+              className={`${styles.agentRow} ${selectedAgent === agent.id ? styles.selected : ''}`}
               onClick={() => onSelectAgent(agent.id)}
-            />
+            >
+              <span className={styles.avatar}>{agent.emoji}</span>
+              <div className={styles.agentInfo}>
+                <span className={styles.agentName}>{agent.name}</span>
+                {agent.count > 0 && <span className={styles.agentCount}>{agent.count} messages</span>}
+              </div>
+            </div>
             {subAgents(agent.id).map(sub => (
-              <AgentRow
+              <div
                 key={sub.id}
-                agent={sub}
-                selected={sub.id === selectedAgent}
+                className={`${styles.agentRow} ${styles.indent} ${selectedAgent === sub.id ? styles.selected : ''}`}
                 onClick={() => onSelectAgent(sub.id)}
-                indent
-              />
+              >
+                <span className={`${styles.avatar} ${styles.avatarSmall}`}>{sub.emoji}</span>
+                <div className={styles.agentInfo}>
+                  <span className={styles.agentName}>{sub.name}</span>
+                </div>
+                {sub.count > 0 && <span className={styles.badge}>{sub.count}</span>}
+              </div>
             ))}
           </div>
         ))}
       </div>
 
-      {/* Bottom toolbar */}
       <div className={styles.footer}>
         <button className={styles.footerBtn} title="Sync Obsidian">🔄 Sync</button>
         <button className={styles.footerBtn} title="Dictionary">📖 Dict</button>
         <button className={styles.footerBtn} title="Settings">⚙️</button>
       </div>
-    </div>
-  )
-}
-
-function AgentRow({ agent, selected, onClick, indent }: {
-  agent: Agent
-  selected: boolean
-  onClick: () => void
-  indent?: boolean
-}) {
-  return (
-    <div
-      className={`${styles.agentRow} ${selected ? styles.selected : ''} ${indent ? styles.indent : ''}`}
-      onClick={onClick}
-    >
-      <span className={`${styles.avatar} ${indent ? styles.avatarSmall : ''}`}>
-        {agent.emoji}
-      </span>
-      <div className={styles.agentInfo}>
-        <span className={styles.agentName}>{agent.name}</span>
-        {agent.count > 0 && !indent && (
-          <span className={styles.agentCount}>{agent.count} messages</span>
-        )}
-      </div>
-      {agent.count > 0 && indent && (
-        <span className={styles.badge}>{agent.count}</span>
-      )}
     </div>
   )
 }

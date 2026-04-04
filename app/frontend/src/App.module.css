@@ -1,0 +1,27 @@
+/* VoxLog three-column layout — matches old SwiftUI design */
+.layout {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-primary);
+}
+
+.center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 380px;
+  overflow: hidden;
+}
+
+.divider {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.dividerH {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}

@@ -1,0 +1,118 @@
+/* Input bar — Claude for Mac style */
+.inputBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.addBtn {
+  font-size: 22px;
+  color: var(--text-secondary);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+.addBtn:hover { background: var(--bg-hover); }
+
+.textInput {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  resize: none;
+  min-height: 36px;
+  max-height: 120px;
+  outline: none;
+}
+.textInput:focus {
+  border-color: var(--accent);
+}
+.textInput::placeholder {
+  color: var(--text-muted);
+}
+
+.modelBtn {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  background: var(--border-light);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.modelBtn:hover { background: var(--bg-hover); }
+
+.micBtn {
+  font-size: 24px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+.micBtn:hover { opacity: 0.8; }
+
+.sendBtn {
+  font-size: 24px;
+  color: var(--orange);
+  padding: 2px 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sendBtn:hover { opacity: 0.8; }
+
+/* Recording mode */
+.recordingBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+}
+
+.cancelBtn {
+  font-size: 24px;
+  color: var(--text-secondary);
+}
+
+.listening {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--red);
+}
+
+.pulse {
+  width: 10px;
+  height: 10px;
+  background: var(--red);
+  border-radius: 50%;
+  animation: pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(1.3); opacity: 0.6; }
+}
+
+/* Processing */
+.processingBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--text-secondary);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { sendVoice, saveText, switchASR, type Message } from '../../api/client'
 import styles from './InputBar.module.css'
 
@@ -10,104 +10,154 @@ export function InputBar({ agent }: InputBarProps) {
   const [text, setText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [error, setError] = useState('')
   const [currentASR, setCurrentASR] = useState('Auto')
   const [showASRMenu, setShowASRMenu] = useState(false)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  
+
+  // Refs for recording state (closures can't see useState updates)
+  const recordingRef = useRef(false)
   const streamRef = useRef<MediaStream | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const pcmRef = useRef<Float32Array[]>([])
+  const pcmChunks = useRef<Float32Array[]>([])
 
   const addMessage = (msg: Message) => {
     const fn = (window as any).__voxlog_addMessage
     if (fn) fn(msg)
   }
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
+    setError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+        }
+      })
 
-      // Record raw PCM for WAV conversion
+      streamRef.current = stream
+      pcmChunks.current = []
+
       const ctx = new AudioContext({ sampleRate: 16000 })
       audioCtxRef.current = ctx
       const source = ctx.createMediaStreamSource(stream)
       const processor = ctx.createScriptProcessor(4096, 1, 1)
-      pcmRef.current = []
 
-      processor.onaudioprocess = (e) => {
-        if (isRecording || !mediaRecorderRef.current) return // check will be stale, use ref
-        pcmRef.current.push(new Float32Array(e.inputBuffer.getChannelData(0)))
+      processor.onaudioprocess = (e: AudioProcessingEvent) => {
+        if (recordingRef.current) {
+          const data = e.inputBuffer.getChannelData(0)
+          pcmChunks.current.push(new Float32Array(data))
+        }
       }
-      // Actually we need a different approach since isRecording is stale in closure
-      // Just always capture, we'll use it when stopping
-      processor.onaudioprocess = (e) => {
-        pcmRef.current.push(new Float32Array(e.inputBuffer.getChannelData(0)))
-      }
+
       source.connect(processor)
       processor.connect(ctx.destination)
 
+      recordingRef.current = true
       setIsRecording(true)
-    } catch {
-      // Microphone not available
+      console.log('[VoxLog] Recording started')
+    } catch (err: any) {
+      console.error('[VoxLog] Mic error:', err)
+      setError(`Mic error: ${err.message || err}`)
     }
-  }
+  }, [])
 
-  const stopAndTranscribe = async () => {
+  const stopAndTranscribe = useCallback(async () => {
+    console.log('[VoxLog] Stopping recording...')
+    recordingRef.current = false
     setIsRecording(false)
     setIsProcessing(true)
+    setError('')
 
     // Stop media
-    streamRef.current?.getTracks().forEach(t => t.stop())
-    audioCtxRef.current?.close()
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    if (audioCtxRef.current) {
+      try { await audioCtxRef.current.close() } catch {}
+      audioCtxRef.current = null
+    }
 
-    // Convert PCM to WAV
-    const totalLen = pcmRef.current.reduce((a, c) => a + c.length, 0)
+    // Convert PCM Float32 → Int16 → WAV
+    const chunks = pcmChunks.current
+    pcmChunks.current = []
+
+    if (chunks.length === 0) {
+      setError('No audio captured')
+      setIsProcessing(false)
+      return
+    }
+
+    const totalLen = chunks.reduce((a, c) => a + c.length, 0)
+    console.log(`[VoxLog] Audio: ${totalLen} samples = ${(totalLen / 16000).toFixed(1)}s`)
+
     const pcm16 = new Int16Array(totalLen)
     let offset = 0
-    for (const chunk of pcmRef.current) {
+    for (const chunk of chunks) {
       for (let i = 0; i < chunk.length; i++) {
         const s = Math.max(-1, Math.min(1, chunk[i]))
         pcm16[offset++] = s < 0 ? s * 0x8000 : s * 0x7FFF
       }
     }
-    pcmRef.current = []
 
     const wavBlob = int16ToWav(pcm16, 16000)
+    console.log(`[VoxLog] WAV: ${wavBlob.size} bytes`)
 
     try {
       const result = await sendVoice(wavBlob, agent)
+      console.log('[VoxLog] Transcribed:', result)
       addMessage(result)
-    } catch (err) {
-      console.error('Transcribe failed:', err)
+      setError('')
+    } catch (err: any) {
+      console.error('[VoxLog] Transcribe error:', err)
+      setError(`Transcribe failed: ${err.message || err}`)
     }
 
     setIsProcessing(false)
-  }
+  }, [agent])
+
+  const cancelRecording = useCallback(() => {
+    recordingRef.current = false
+    setIsRecording(false)
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close() } catch {}
+      audioCtxRef.current = null
+    }
+    pcmChunks.current = []
+    console.log('[VoxLog] Recording cancelled')
+  }, [])
 
   const handleSend = async () => {
     if (!text.trim()) return
     const t = text
     setText('')
+    setError('')
     try {
       const result = await saveText(t, agent)
       addMessage(result)
-    } catch (err) {
-      console.error('Save failed:', err)
+    } catch (err: any) {
+      setError(`Send failed: ${err.message || err}`)
     }
   }
 
   const handleASRSwitch = async (model: string, label: string) => {
     setCurrentASR(label)
     setShowASRMenu(false)
-    await switchASR(model)
+    await switchASR(model).catch(() => {})
   }
 
-  // Recording UI
+  // === Recording UI ===
   if (isRecording) {
     return (
       <div className={styles.recordingBar}>
-        <button className={styles.cancelBtn} onClick={() => { setIsRecording(false); streamRef.current?.getTracks().forEach(t => t.stop()) }}>✕</button>
+        <button className={styles.cancelBtn} onClick={cancelRecording}>✕</button>
         <div className={styles.listening}>
           <span className={styles.pulse} />
           <span>Listening...</span>
@@ -126,46 +176,49 @@ export function InputBar({ agent }: InputBarProps) {
     )
   }
 
+  // === Normal UI ===
   return (
     <div className={styles.inputBar}>
-      <button className={styles.addBtn} title="Add files">⊕</button>
+      {error && <div className={styles.error}>{error}</div>}
 
-      <textarea
-        className={styles.textInput}
-        value={text}
-        onChange={e => setText(e.target.value)}
-        placeholder="Paste AI response..."
-        rows={1}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-      />
+      <div className={styles.inputRow}>
+        <button className={styles.addBtn} title="Add files">⊕</button>
 
-      {/* ASR selector */}
-      <div className={styles.asrWrap}>
-        <button className={styles.modelBtn} onClick={() => setShowASRMenu(!showASRMenu)}>
-          {currentASR}
-        </button>
-        {showASRMenu && (
-          <div className={styles.asrMenu}>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('auto', 'Auto')}>🔄 Auto-detect</div>
-            <div className={styles.asrSep} />
-            <div className={styles.asrItem} onClick={() => handleASRSwitch("qwen-local", "Qwen 0.6B")}>🧠 Qwen3-ASR 0.6B (local)</div>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-us', 'Qwen US')}>🇺🇸 Qwen ASR (US)</div>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-cn', 'Qwen CN')}>🇨🇳 Qwen ASR (CN)</div>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('openai', 'Whisper')}>🌐 OpenAI Whisper</div>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('siliconflow', 'SenseVoice')}>🇨🇳 SiliconFlow</div>
-            <div className={styles.asrSep} />
-            <div className={styles.asrItem} onClick={() => handleASRSwitch("qwen-local", "Qwen 0.6B")}>🧠 Qwen3-ASR 0.6B (local)</div>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('local', 'Local')}>💻 whisper.cpp base</div>
-            <div className={styles.asrItem} onClick={() => handleASRSwitch('local-tiny', 'Local⚡')}>💻 whisper.cpp tiny</div>
-          </div>
+        <textarea
+          className={styles.textInput}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Paste AI response..."
+          rows={1}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+        />
+
+        <div className={styles.asrWrap}>
+          <button className={styles.modelBtn} onClick={() => setShowASRMenu(!showASRMenu)}>
+            {currentASR}
+          </button>
+          {showASRMenu && (
+            <div className={styles.asrMenu}>
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('auto', 'Auto')}>🔄 Auto-detect</div>
+              <div className={styles.asrSep} />
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-us', 'Qwen US')}>🇺🇸 Qwen ASR (US)</div>
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-cn', 'Qwen CN')}>🇨🇳 Qwen ASR (CN)</div>
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('openai', 'Whisper')}>🌐 OpenAI Whisper</div>
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('siliconflow', 'SenseVoice')}>🇨🇳 SiliconFlow</div>
+              <div className={styles.asrSep} />
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('local', 'Local')}>💻 whisper.cpp base</div>
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('local-tiny', 'Local⚡')}>💻 whisper.cpp tiny</div>
+              <div className={styles.asrItem} onClick={() => handleASRSwitch('qwen-local', 'Qwen 0.6B')}>🧠 Qwen3 0.6B (local)</div>
+            </div>
+          )}
+        </div>
+
+        {text.trim() ? (
+          <button className={styles.sendBtn} onClick={handleSend} title="Send">↑</button>
+        ) : (
+          <button className={styles.micBtn} onClick={startRecording} title="Record voice">🎤</button>
         )}
       </div>
-
-      {text.trim() ? (
-        <button className={styles.sendBtn} onClick={handleSend} title="Send">↑</button>
-      ) : (
-        <button className={styles.micBtn} onClick={startRecording} title="Record voice">🎤</button>
-      )}
     </div>
   )
 }

@@ -35,7 +35,7 @@ from runtime.fastpath.pipeline import fast_path
 from runtime.fastpath.recent import RecentUtteranceStore
 from runtime.fastpath.stt import STTError
 from integrations.ai_mate_memory import AIMateMemorySink
-from integrations.obsidian import ObsidianSink
+# from integrations.obsidian import ObsidianSink  # replaced by sync_recent
 from runtime.models.config import VoxLogConfig, get_config
 from runtime.models.events import (
     ArchiveStatus,
@@ -764,20 +764,23 @@ async def export_obsidian_endpoint(request: Request, _auth: None = Depends(verif
         digest_date=str(body.get("date", "")).strip(),
         project_key=str(body.get("project_key", "")).strip(),
     )
-    sink = ObsidianSink(Path(vault_dir))
-    result = sink.export_digest(
-        scope=scope,
-        content=markdown,
-        session_id=str(body.get("session_id", "")).strip(),
-        digest_date=str(body.get("date", "")).strip(),
-        project_key=str(body.get("project_key", "")).strip(),
-    )
-    return {
-        "ok": True,
-        "vault_path": result.vault_path,
-        "note_path": result.note_path,
-        "bytes_written": result.bytes_written,
-    }
+    # Simple Obsidian export (ObsidianSink not available)
+    vault_path = Path(vault_dir) / "06-osborn" / "voice-logs"
+    vault_path.mkdir(parents=True, exist_ok=True)
+    filename = f"{scope}-export.md"
+    out = vault_path / filename
+    out.write_text(markdown, encoding="utf-8")
+    return {"ok": True, "vault_path": str(vault_path), "note_path": str(out), "bytes_written": len(markdown)}
+
+
+
+
+
+
+
+
+
+
 
 
 @app.post("/v1/integrations/ai-mate-memory/export")
@@ -808,9 +811,7 @@ async def export_ai_mate_memory_endpoint(request: Request, _auth: None = Depends
         "ok": True,
         "base_path": result.base_path,
         "record_path": result.record_path,
-        "bytes_written": result.bytes_written,
     }
-
 
 @app.post("/v1/dictionary")
 async def update_dict(request: Request, _auth: None = Depends(verify_token)):

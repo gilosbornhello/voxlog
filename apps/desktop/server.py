@@ -110,6 +110,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="VoxLog2", version="2.0.0", lifespan=lifespan)
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
 
 def verify_token(authorization: str | None = Header(None)) -> None:
     if not _config or not _config.api_token:

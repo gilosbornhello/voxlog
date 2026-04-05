@@ -148,3 +148,116 @@ export async function deleteDictTerm(wrong: string): Promise<void> {
     body: JSON.stringify({ action: 'delete', wrong }),
   })
 }
+
+// --- Agent CRUD ---
+
+export interface AgentFull {
+  id: string
+  name: string
+  emoji: string
+  agent_type: string
+  parent_id: string
+  external_system?: string
+  external_agent_ref?: string
+  binding_status?: string
+  can_accept_tasks?: boolean
+  is_archived?: boolean
+}
+
+export async function getAllAgents(): Promise<AgentFull[]> {
+  const r = await fetch(`${BASE}/v1/agents/all`, { headers: headers() })
+  return r.json()
+}
+
+export async function createAgent(name: string, emoji: string, parentId = ''): Promise<AgentFull> {
+  const r = await fetch(`${BASE}/v1/agents/create`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, emoji, parent_id: parentId }),
+  })
+  return r.json()
+}
+
+export async function deleteAgent(id: string): Promise<void> {
+  await fetch(`${BASE}/v1/agents/${id}`, { method: 'DELETE', headers: headers() })
+}
+
+export async function bindAgent(id: string, ref: string): Promise<void> {
+  await fetch(`${BASE}/v1/agents/${id}/bind`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ external_system: 'xiaolongxia_local', external_agent_ref: ref, can_accept_tasks: true }),
+  })
+}
+
+// --- Groups ---
+
+export interface GroupInfo {
+  id: string
+  title: string
+  emoji: string
+  member_agent_ids: string[]
+}
+
+export async function getGroups(): Promise<GroupInfo[]> {
+  const r = await fetch(`${BASE}/v1/groups`, { headers: headers() })
+  return r.json()
+}
+
+export async function createGroup(title: string, emoji: string, members: string[]): Promise<GroupInfo> {
+  const r = await fetch(`${BASE}/v1/groups/create`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, emoji, members }),
+  })
+  return r.json()
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  await fetch(`${BASE}/v1/groups/${id}`, { method: 'DELETE', headers: headers() })
+}
+
+// --- Tasks ---
+
+export interface TaskInfo {
+  id: string
+  title: string
+  description: string
+  assigned_context_id: string
+  status: string
+  priority: string
+  source_message_id: string
+  created_at: string
+}
+
+export async function getTasks(agent?: string, status?: string): Promise<TaskInfo[]> {
+  const params = new URLSearchParams()
+  if (agent) params.set('agent', agent)
+  if (status) params.set('status', status)
+  const r = await fetch(`${BASE}/v1/tasks?${params}`, { headers: headers() })
+  return r.json()
+}
+
+export async function createTask(title: string, assignedTo: string, messageId?: string, description?: string): Promise<TaskInfo> {
+  const r = await fetch(`${BASE}/v1/tasks/create`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, assigned_to: assignedTo, source_message_id: messageId || '', description: description || '' }),
+  })
+  return r.json()
+}
+
+export async function updateTaskStatus(id: string, status: string): Promise<void> {
+  await fetch(`${BASE}/v1/tasks/${id}/status`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+}
+
+// --- Identity ---
+
+export async function getIdentity(): Promise<{ self_id: string; display_name: string; role: string }> {
+  const r = await fetch(`${BASE}/v1/identity`, { headers: headers() })
+  return r.json()
+}

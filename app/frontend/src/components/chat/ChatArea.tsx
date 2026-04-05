@@ -102,7 +102,8 @@ function Bubble({ text, isMe, time, latency, filePaths, onFileTap, onRecall, can
             <button className={styles.actionBtn} onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>
               {copied ? '✓' : '📋'}
             </button>
-            {canRecall && <button className={styles.actionBtn} onClick={onRecall} style={{color:'var(--red)'}}>↩</button>}
+            {canRecall && <button className={styles.actionBtn} onClick={onRecall} style={{color:"var(--red)"}}>↩</button>}
+              <button className={styles.actionBtn} onClick={() => { const title = prompt("Task title:"); if (title) { import("../../api/client").then(c => c.createTask(title, "", msg.id)) } }} title="Create Task">📋</button>
           </div>
         )}
       </div>

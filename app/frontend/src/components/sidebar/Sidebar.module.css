@@ -133,3 +133,40 @@
   border-radius: var(--radius-sm);
 }
 .footerBtn:hover { background: var(--bg-hover); }
+
+/* Gilbert identity */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.identityAvatar { font-size: 20px; }
+.identityName { font-size: 14px; font-weight: 600; }
+
+/* Type selector in add form */
+.typeSelect {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+/* Section header */
+.sectionHeader {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 14px 4px;
+}
+
+/* Bound badge */
+.boundBadge {
+  font-size: 12px;
+  flex-shrink: 0;
+}

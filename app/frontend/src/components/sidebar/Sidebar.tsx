@@ -1,28 +1,19 @@
 import { useState, useEffect } from 'react'
-import { getAgents } from '../../api/client'
+import { getAllAgents, getAgents, getGroups, createAgent, deleteAgent, createGroup, type AgentFull, type GroupInfo, type AgentInfo } from '../../api/client'
 import styles from './Sidebar.module.css'
 
-interface Agent {
-  id: string
-  name: string
-  emoji: string
-  parent: string
-  count: number
-  type: 'system_default' | 'user_created' | 'group'
-}
-
-const DEFAULT_AGENTS: Agent[] = [
-  { id: 'claude-code', name: 'Claude Code', emoji: '👨‍💻', parent: '', count: 0, type: 'system_default' },
-  { id: 'claude-code/office-hours', name: 'Office Hours', emoji: '🧑‍💼', parent: 'claude-code', count: 0, type: 'system_default' },
-  { id: 'claude-code/ceo-review', name: 'CEO Review', emoji: '👔', parent: 'claude-code', count: 0, type: 'system_default' },
-  { id: 'claude-code/eng-review', name: 'Eng Review', emoji: '🔧', parent: 'claude-code', count: 0, type: 'system_default' },
-  { id: 'claude-code/design-review', name: 'Design Review', emoji: '🎨', parent: 'claude-code', count: 0, type: 'system_default' },
-  { id: 'claude-mac', name: 'Claude for Mac', emoji: '🖥️', parent: '', count: 0, type: 'system_default' },
-  { id: 'claude-mac/chat', name: 'Chat', emoji: '💬', parent: 'claude-mac', count: 0, type: 'system_default' },
-  { id: 'claude-mac/cowork', name: 'Co-work', emoji: '🤝', parent: 'claude-mac', count: 0, type: 'system_default' },
-  { id: 'openclaw', name: 'OpenClaw', emoji: '🦞', parent: '', count: 0, type: 'system_default' },
-  { id: 'osborn', name: 'Osborn', emoji: '🧠', parent: '', count: 0, type: 'system_default' },
-  { id: 'general', name: 'General', emoji: '📝', parent: '', count: 0, type: 'system_default' },
+const DEFAULT_AGENTS: AgentFull[] = [
+  { id: 'claude-code', name: 'Claude Code', emoji: '👨‍💻', agent_type: 'system_default', parent_id: '' },
+  { id: 'claude-code/office-hours', name: 'Office Hours', emoji: '🧑‍💼', agent_type: 'system_default', parent_id: 'claude-code' },
+  { id: 'claude-code/ceo-review', name: 'CEO Review', emoji: '👔', agent_type: 'system_default', parent_id: 'claude-code' },
+  { id: 'claude-code/eng-review', name: 'Eng Review', emoji: '🔧', agent_type: 'system_default', parent_id: 'claude-code' },
+  { id: 'claude-code/design-review', name: 'Design Review', emoji: '🎨', agent_type: 'system_default', parent_id: 'claude-code' },
+  { id: 'claude-mac', name: 'Claude for Mac', emoji: '🖥️', agent_type: 'system_default', parent_id: '' },
+  { id: 'claude-mac/chat', name: 'Chat', emoji: '💬', agent_type: 'system_default', parent_id: 'claude-mac' },
+  { id: 'claude-mac/cowork', name: 'Co-work', emoji: '🤝', agent_type: 'system_default', parent_id: 'claude-mac' },
+  { id: 'openclaw', name: 'OpenClaw', emoji: '🦞', agent_type: 'system_default', parent_id: '' },
+  { id: 'osborn', name: 'Osborn', emoji: '🧠', agent_type: 'system_default', parent_id: '' },
+  { id: 'general', name: 'General', emoji: '📝', agent_type: 'system_default', parent_id: '' },
 ]
 
 interface SidebarProps {
@@ -31,49 +22,69 @@ interface SidebarProps {
 }
 
 export function Sidebar({ selectedAgent, onSelectAgent }: SidebarProps) {
-  const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS)
+  const [agents, setAgents] = useState<AgentFull[]>(DEFAULT_AGENTS)
+  const [groups, setGroups] = useState<GroupInfo[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
   const [showAdd, setShowAdd] = useState(false)
+  const [addType, setAddType] = useState<'agent' | 'group'>('agent')
   const [newName, setNewName] = useState('')
   const [newEmoji, setNewEmoji] = useState('🤖')
 
-  // Load agent counts from backend
   useEffect(() => {
-    getAgents().then(apiAgents => {
-      setAgents(prev => {
-        const updated = [...prev]
-        for (const a of apiAgents) {
-          const idx = updated.findIndex(x => x.id === a.agent)
-          if (idx >= 0) {
-            updated[idx] = { ...updated[idx], count: a.count }
-          }
-        }
-        return updated
-      })
-    }).catch(() => {}) // silently fail if backend not ready
+    // Load agents
+    getAllAgents().then(data => { if (data.length > 0) setAgents(data) }).catch(() => {})
+    // Load groups
+    getGroups().then(setGroups).catch(() => {})
+    // Load counts
+    getAgents().then(data => {
+      const c: Record<string, number> = {}
+      for (const a of data) c[a.agent] = a.count
+      setCounts(c)
+    }).catch(() => {})
   }, [selectedAgent])
 
-  const topLevel = agents.filter(a => a.parent === '')
-  const subAgents = (parentId: string) => agents.filter(a => a.parent === parentId)
+  const topLevel = agents.filter(a => !a.parent_id)
+  const subAgents = (pid: string) => agents.filter(a => a.parent_id === pid)
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newName.trim()) return
-    const id = newName.toLowerCase().replace(/\s+/g, '-')
-    const emoji = newEmoji || '🤖'
-    setAgents(prev => [...prev, { id, name: newName, emoji, parent: '', count: 0, type: 'user_created' }])
-    setNewName('')
-    setNewEmoji('🤖')
-    setShowAdd(false)
+    if (addType === 'agent') {
+      const created = await createAgent(newName, newEmoji || '🤖')
+      setAgents(prev => [...prev, created])
+    } else {
+      const created = await createGroup(newName, newEmoji || '👥', [])
+      setGroups(prev => [...prev, created])
+    }
+    setNewName(''); setNewEmoji('🤖'); setShowAdd(false)
+  }
+
+  const handleDelete = async (id: string, type: 'agent' | 'group') => {
+    if (type === 'agent') {
+      await deleteAgent(id)
+      setAgents(prev => prev.filter(a => a.id !== id))
+    }
+    // TODO: deleteGroup
   }
 
   return (
     <div className={styles.sidebar}>
+      {/* Gilbert identity */}
+      <div className={styles.identity}>
+        <span className={styles.identityAvatar}>👤</span>
+        <span className={styles.identityName}>Gilbert</span>
+      </div>
+
       <div className={styles.header}>
         <span className={styles.title}>Agents</span>
-        <button className={styles.addBtn} onClick={() => setShowAdd(!showAdd)}>+</button>
+        <button className={styles.addBtn} onClick={() => { setShowAdd(!showAdd); setAddType('agent') }}>+</button>
       </div>
 
       {showAdd && (
         <div className={styles.addForm}>
+          <select className={styles.typeSelect} value={addType} onChange={e => setAddType(e.target.value as any)}>
+            <option value="agent">Agent</option>
+            <option value="group">Group</option>
+          </select>
           <input className={styles.emojiInput} value={newEmoji} onChange={e => setNewEmoji(e.target.value)} maxLength={2} />
           <input className={styles.nameInput} value={newName} onChange={e => setNewName(e.target.value)} placeholder="Name" onKeyDown={e => e.key === 'Enter' && handleAdd()} />
           <button className={styles.addConfirm} onClick={handleAdd}>Add</button>
@@ -81,17 +92,23 @@ export function Sidebar({ selectedAgent, onSelectAgent }: SidebarProps) {
       )}
 
       <div className={styles.list}>
+        {/* Agents */}
         {topLevel.map(agent => (
           <div key={agent.id}>
             <div
               className={`${styles.agentRow} ${selectedAgent === agent.id ? styles.selected : ''}`}
               onClick={() => onSelectAgent(agent.id)}
+              onContextMenu={e => {
+                e.preventDefault()
+                if (agent.agent_type === 'user_created' && confirm(`Delete ${agent.name}?`)) handleDelete(agent.id, 'agent')
+              }}
             >
               <span className={styles.avatar}>{agent.emoji}</span>
               <div className={styles.agentInfo}>
                 <span className={styles.agentName}>{agent.name}</span>
-                {agent.count > 0 && <span className={styles.agentCount}>{agent.count} messages</span>}
+                {(counts[agent.id] || 0) > 0 && <span className={styles.agentCount}>{counts[agent.id]} msgs</span>}
               </div>
+              {agent.binding_status === 'bound' && <span className={styles.boundBadge} title="Bound to 小龙虾">🔗</span>}
             </div>
             {subAgents(agent.id).map(sub => (
               <div
@@ -100,19 +117,36 @@ export function Sidebar({ selectedAgent, onSelectAgent }: SidebarProps) {
                 onClick={() => onSelectAgent(sub.id)}
               >
                 <span className={`${styles.avatar} ${styles.avatarSmall}`}>{sub.emoji}</span>
-                <div className={styles.agentInfo}>
-                  <span className={styles.agentName}>{sub.name}</span>
-                </div>
-                {sub.count > 0 && <span className={styles.badge}>{sub.count}</span>}
+                <span className={styles.agentName}>{sub.name}</span>
               </div>
             ))}
           </div>
         ))}
+
+        {/* Groups section */}
+        {groups.length > 0 && (
+          <>
+            <div className={styles.sectionHeader}>Groups</div>
+            {groups.map(group => (
+              <div
+                key={group.id}
+                className={`${styles.agentRow} ${selectedAgent === group.id ? styles.selected : ''}`}
+                onClick={() => onSelectAgent(group.id)}
+              >
+                <span className={styles.avatar}>{group.emoji}</span>
+                <div className={styles.agentInfo}>
+                  <span className={styles.agentName}>{group.title}</span>
+                  <span className={styles.agentCount}>{group.member_agent_ids.length} members</span>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       <div className={styles.footer}>
-        <button className={styles.footerBtn} title="Sync Obsidian">🔄 Sync</button>
-        <button className={styles.footerBtn} title="Dictionary">📖 Dict</button>
+        <button className={styles.footerBtn} title="Sync Obsidian">🔄</button>
+        <button className={styles.footerBtn} title="Dictionary">📖</button>
         <button className={styles.footerBtn} title="Settings">⚙️</button>
       </div>
     </div>

@@ -145,7 +145,7 @@ export function Sidebar({ selectedAgent, onSelectAgent }: SidebarProps) {
       </div>
 
       <div className={styles.footer}>
-        <button className={styles.footerBtn} title="Sync Obsidian">🔄</button>
+        <button className={styles.footerBtn} title="Sync Obsidian" onClick={() => fetch('http://127.0.0.1:7890/v1/sync-obsidian', { method: 'POST', headers: { 'Authorization': 'Bearer voxlog-dev-token' } }).then(() => alert('Synced!')).catch(() => {})}>🔄</button>
         <button className={styles.footerBtn} title="Dictionary">📖</button>
         <button className={styles.footerBtn} title="Settings">⚙️</button>
       </div>

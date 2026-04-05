@@ -1113,3 +1113,18 @@ async def update_task_status_endpoint(task_id: str, request: Request, _auth: Non
             break
     _save_json(_TASKS_PATH, tasks)
     return {"updated": task_id, "status": body["status"]}
+
+
+# === OBSIDIAN SYNC ===
+
+@app.post("/v1/sync-obsidian")
+async def sync_obsidian_endpoint(
+    days: int = Query(default=7),
+    _auth: None = Depends(verify_token),
+) -> dict:
+    from integrations.obsidian import sync_recent
+    assert _config
+    exported = await asyncio.get_event_loop().run_in_executor(
+        None, sync_recent, _config.db_path, days
+    )
+    return {"exported": len(exported), "dates": exported}

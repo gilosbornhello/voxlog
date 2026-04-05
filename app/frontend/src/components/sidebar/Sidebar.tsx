@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAllAgents, getAgents, getGroups, createAgent, deleteAgent, createGroup, type AgentFull, type GroupInfo, type AgentInfo } from '../../api/client'
+import { getAllAgents, getAgents, getGroups, createAgent, deleteAgent, createGroup, type AgentFull, type GroupInfo } from '../../api/client'
 import styles from './Sidebar.module.css'
 
 const DEFAULT_AGENTS: AgentFull[] = [

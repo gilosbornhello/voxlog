@@ -63,6 +63,7 @@ export function ChatArea({ agent, onFileTap }: ChatAreaProps) {
                 if (ok) setMessages(prev => prev.filter(m => m.id !== msg.id))
               })}
               canRecall={Date.now() - new Date(msg.created_at).getTime() < 120000}
+              messageId={msg.id}
             />
           </BubbleRow>
         )
@@ -82,10 +83,10 @@ function BubbleRow({ isMe, children }: { isMe: boolean; children: React.ReactNod
   )
 }
 
-function Bubble({ text, isMe, time, latency, filePaths, onFileTap, onRecall, canRecall }: {
+function Bubble({ text, isMe, time, latency, filePaths, onFileTap, onRecall, canRecall, messageId }: {
   text: string; isMe: boolean; time: string; latency: number
   filePaths: string[]; onFileTap: (p: string) => void
-  onRecall: () => void; canRecall: boolean
+  onRecall: () => void; canRecall: boolean; messageId: string
 }) {
   const [hovered, setHovered] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -103,7 +104,7 @@ function Bubble({ text, isMe, time, latency, filePaths, onFileTap, onRecall, can
               {copied ? '✓' : '📋'}
             </button>
             {canRecall && <button className={styles.actionBtn} onClick={onRecall} style={{color:"var(--red)"}}>↩</button>}
-              <button className={styles.actionBtn} onClick={() => { const title = prompt("Task title:"); if (title) { import("../../api/client").then(c => c.createTask(title, "", msg.id)) } }} title="Create Task">📋</button>
+              <button className={styles.actionBtn} onClick={() => { const title = prompt("Task title:"); if (title) { import("../../api/client").then(c => c.createTask(title, "", messageId)) } }} title="Create Task">📋</button>
           </div>
         )}
       </div>
